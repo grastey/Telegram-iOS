@@ -2,9 +2,9 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
-/// Inserts a clearly labelled local service card without entering the outgoing queue.
+/// Inserts a local service card without entering the outgoing queue.
 /// No outgoing attributes or sending flags: PendingMessageManager must never upload this.
-public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: StarGift, text: String) -> Signal<Void, NoError> {
+public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: StarGift, text: String, entities: [MessageTextEntity]? = nil) -> Signal<Void, NoError> {
     guard DemoWallet.isEnabled, peerId.namespace == Namespaces.Peer.CloudUser else {
         return .complete()
     }
@@ -12,14 +12,14 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
         let caption: String? = text.isEmpty ? nil : text
         let actionType: TelegramMediaActionType
         switch gift {
-        case .generic:
+        case let .generic(genericGift):
             actionType = .starGift(
-                gift: gift, convertStars: nil,
+                gift: gift, convertStars: genericGift.convertStars,
                 text: caption,
-                entities: nil, nameHidden: false, savedToProfile: false, converted: false,
+                entities: entities, nameHidden: false, savedToProfile: false, converted: false,
                 upgraded: false, canUpgrade: false, upgradeStars: nil, isRefunded: false,
                 isPrepaidUpgrade: false, upgradeMessageId: nil, peerId: nil,
-                senderId: account.peerId, savedId: nil, prepaidUpgradeHash: nil,
+                senderId: nil, savedId: nil, prepaidUpgradeHash: nil,
                 giftMessageId: nil, upgradeSeparate: false, isAuctionAcquired: false,
                 toPeerId: peerId, number: nil
             )
@@ -30,7 +30,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
                 isPrepaidUpgrade: false, peerId: nil, senderId: account.peerId,
                 savedId: nil, resaleAmount: nil, canTransferDate: nil, canResaleDate: nil,
                 dropOriginalDetailsStars: nil, assigned: false, fromOffer: false,
-                canCraftAt: nil, isCrafted: false, text: caption, entities: nil, nameHidden: false
+                canCraftAt: nil, isCrafted: false, text: caption, entities: entities, nameHidden: false
             )
         }
         let action = TelegramMediaAction(action: actionType)
@@ -39,7 +39,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
             globallyUniqueId: nil, groupingKey: nil, threadId: nil,
             timestamp: Int32(clamping: Int64(Date().timeIntervalSince1970)),
             flags: [], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
-            authorId: account.peerId, text: "",
+            authorId: account.peerId, text: text,
             attributes: [], media: [action]
         )
         let _ = transaction.addMessages([message], location: .Random)

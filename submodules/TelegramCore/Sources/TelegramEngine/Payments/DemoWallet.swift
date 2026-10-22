@@ -3,6 +3,7 @@ import Foundation
 /// Local presentation data for this demo fork. Never use these values in payment requests.
 public struct DemoWallet {
     public static let isEnabled = true
+    public static let didChange = Notification.Name("localWalletDidChange")
     public let stars: Int64
     public let tonNanograms: Int64
 
@@ -24,6 +25,7 @@ public struct DemoWallet {
         let prefix = "demoWallet.\(accountId)."
         UserDefaults.standard.set(NSNumber(value: self.stars), forKey: prefix + "stars")
         UserDefaults.standard.set(NSNumber(value: self.tonNanograms), forKey: prefix + "ton")
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 
     /// Decimal parsing without floating point rounding or integer overflow.
