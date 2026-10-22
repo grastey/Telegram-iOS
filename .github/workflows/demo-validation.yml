@@ -1,0 +1,32 @@
+name: Demo fork validation
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - demo-local-gifts
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test local demo wallet
+        run: |
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"
+          "$RUNNER_TEMP/demo-wallet-tests"
+      - name: Parse modified Swift files
+        run: |
+          swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoGift.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/DemoWalletEditor.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
+      - name: Report required and available Xcode versions
+        run: |
+          python3 -c 'import json; print("Required Xcode:", json.load(open("versions.json"))["xcode"])'
+          xcodebuild -version
+          ls /Applications | grep Xcode || true
