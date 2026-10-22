@@ -395,7 +395,7 @@ private final class GiftSetupScreenComponent: Component {
             }
             guard case let .starGift(gift, _) = component.subject,
                   component.peerId.namespace == Namespaces.Peer.CloudUser else {
-                controller.present(textAlertController(context: component.context, title: "Демо", text: "Демо-подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+                controller.present(textAlertController(context: component.context, title: "Отправить подарок", text: "Подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
                 return
             }
             self.inProgress = true
@@ -1995,7 +1995,7 @@ private final class GiftSetupScreenComponent: Component {
             }
             
             if DemoWallet.isEnabled, case .starGift = component.subject {
-                buttonString = "Подарить · Демо"
+                buttonString = "Подарить"
                 buttonIsEnabled = true
             }
 
