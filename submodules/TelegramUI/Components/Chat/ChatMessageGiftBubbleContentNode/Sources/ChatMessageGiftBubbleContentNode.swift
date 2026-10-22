@@ -716,7 +716,11 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                             let giftText = localGiftCaption(rawGiftText, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
                             var incoming = incoming
                             var convertStars = convertStars
+                            let isLocalOutgoingGift = DemoWallet.isEnabled && item.message.id.namespace == Namespaces.Message.Local && item.message.author?.id == item.context.account.peerId
                             if case let .generic(gift) = gift {
+                                if isLocalOutgoingGift, convertStars == nil {
+                                    convertStars = gift.convertStars
+                                }
                                 if gift.flags.contains(.isAuction) {
                                     convertStars = nil
                                 }
@@ -741,7 +745,7 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                     if isPrepaidUpgrade && senderPeerId == channelPeerId {
                                         title = item.presentationData.strings.Gift_View_Unknown_Title
                                     } else {
-                                        if let senderPeerId, let name = item.message.peers[senderPeerId].flatMap(EnginePeer.init)?.compactDisplayTitle {
+                                        if !isLocalOutgoingGift, let senderPeerId, let name = item.message.peers[senderPeerId].flatMap(EnginePeer.init)?.compactDisplayTitle {
                                             title = item.presentationData.strings.Notification_StarGift_Title(name).string
                                         } else if !incoming {
                                             var recipientPeerId = item.message.id.peerId
