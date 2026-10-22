@@ -993,6 +993,11 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                 
                 let (labelLayout, labelApply) = makeLabelLayout(TextNodeLayoutArguments(attributedString: attributedString, backgroundColor: nil, maximumNumberOfLines: 0, truncationType: .end, constrainedSize: CGSize(width: constrainedSize.width - 32.0, height: CGFloat.greatestFiniteMagnitude), alignment: .center, cutout: nil, insets: UIEdgeInsets()))
                 
+                if DemoWallet.isEnabled, isStarGift, item.message.id.namespace == Namespaces.Message.Local,
+                   item.message.text == "ДЕМО • Подарок не отправлен" {
+                    title = "ДЕМО • " + title
+                    text = "Только на этом устройстве. Подарок не отправлен."
+                }
                 let titleAttributedString = NSMutableAttributedString(attributedString: NSAttributedString(string: title, font: Font.semibold(15.0), textColor: primaryTextColor, paragraphAlignment: .center))
                 var updatedCachedTonImage: (UIImage, UIColor)? = cachedTonImage
                 if let range = titleAttributedString.string.range(of: "$") {
