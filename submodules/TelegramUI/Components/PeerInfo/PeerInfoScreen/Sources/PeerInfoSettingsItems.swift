@@ -282,38 +282,48 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
             interaction.openSettings(.premium)
         }))
     }
-    if let starsState = data.starsState {
-        if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
-            let balanceText: NSAttributedString
-            if abs(starsState.balance.value) > 0 {
-                let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
-                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
-                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
-                let labelColor = presentationData.theme.list.itemSecondaryTextColor
-                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
-            } else {
-                balanceText = NSAttributedString()
+    if DemoWallet.isEnabled {
+        let wallet = DemoWallet.load(accountId: context.account.peerId.toInt64())
+        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .text("\(wallet.stars)"), text: "Stars · Демо", icon: PresentationResourcesSettings.stars, action: {
+            interaction.openSettings(.stars)
+        }))
+        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .text(wallet.tonText), text: "TON · Демо", icon: PresentationResourcesSettings.gramEarnings, action: {
+            interaction.openSettings(.ton)
+        }))
+    } else {
+        if let starsState = data.starsState {
+            if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
+                let balanceText: NSAttributedString
+                if abs(starsState.balance.value) > 0 {
+                    let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
+                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
+                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
+                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
+                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
+                } else {
+                    balanceText = NSAttributedString()
+                }
+                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
+                    interaction.openSettings(.stars)
+                }))
             }
-            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
-                interaction.openSettings(.stars)
-            }))
         }
-    }
-    if let tonState = data.tonState {
-        if abs(tonState.balance.value) > 0 {
-            let balanceText: NSAttributedString
+        if let tonState = data.tonState {
             if abs(tonState.balance.value) > 0 {
-                let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
-                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
-                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
-                let labelColor = presentationData.theme.list.itemSecondaryTextColor
-                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
-            } else {
-                balanceText = NSAttributedString()
+                let balanceText: NSAttributedString
+                if abs(tonState.balance.value) > 0 {
+                    let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
+                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
+                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
+                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
+                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
+                } else {
+                    balanceText = NSAttributedString()
+                }
+                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.gramEarnings, action: {
+                    interaction.openSettings(.ton)
+                }))
             }
-            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.gramEarnings, action: {
-                interaction.openSettings(.ton)
-            }))
         }
     }
     if !isPremiumDisabled || context.isPremium {
