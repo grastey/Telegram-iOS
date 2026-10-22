@@ -398,14 +398,16 @@ private final class GiftSetupScreenComponent: Component {
                 controller.present(textAlertController(context: component.context, title: "Отправить подарок", text: "Подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
                 return
             }
+            // Capture the caption before changing component state or ending input.
+            var caption = NSAttributedString()
+            if let inputPanelView = self.inputPanel.view as? MessageInputPanelComponent.View,
+               case let .text(value) = inputPanelView.getSendMessageInput(applyAutocorrection: true) {
+                caption = value
+            }
+            let entities = generateChatInputTextEntities(caption)
             self.inProgress = true
             self.state?.updated()
-            var text = ""
-            if let inputPanelView = self.inputPanel.view as? MessageInputPanelComponent.View,
-               case let .text(value) = inputPanelView.getSendMessageInput() {
-                text = value.string
-            }
-            let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: .generic(gift), text: text)
+            let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: .generic(gift), text: caption.string, entities: entities)
             |> deliverOnMainQueue).startStandalone(completed: { [weak self, weak navigationController] in
                 self?.inProgress = false
                 guard let navigationController else { return }
