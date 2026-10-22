@@ -7,6 +7,9 @@ on:
       - demo-local-gifts
     paths:
       - .github/workflows/demo-ipa.yml
+      - .gitmodules
+      - submodules/**
+      - demo-tests/**
 permissions:
   contents: read
 concurrency:
