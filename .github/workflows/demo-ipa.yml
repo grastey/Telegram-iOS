@@ -11,7 +11,7 @@ permissions:
   contents: read
 concurrency:
   group: demogram-ipa
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: xcode-27
