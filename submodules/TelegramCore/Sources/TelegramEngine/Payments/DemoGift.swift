@@ -9,7 +9,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
         return .complete()
     }
     return account.postbox.transaction { transaction -> Void in
-        let caption = "ДЕМО • Только на этом устройстве" + (text.isEmpty ? "" : "\n" + text)
+        let caption: String? = text.isEmpty ? nil : text
         let actionType: TelegramMediaActionType
         switch gift {
         case .generic:
@@ -39,7 +39,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
             globallyUniqueId: nil, groupingKey: nil, threadId: nil,
             timestamp: Int32(clamping: Int64(Date().timeIntervalSince1970)),
             flags: [], tags: [], globalTags: [], localTags: [], forwardInfo: nil,
-            authorId: account.peerId, text: "ДЕМО • Подарок не отправлен",
+            authorId: account.peerId, text: "",
             attributes: [], media: [action]
         )
         let _ = transaction.addMessages([message], location: .Random)
