@@ -27,6 +27,9 @@ jobs:
           swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
       - name: Report required and available Xcode versions
         run: |
           python3 -c 'import json; print("Required Xcode:", json.load(open("versions.json"))["xcode"])'
