@@ -298,6 +298,10 @@ final class GiftOptionsScreenComponent: Component {
             guard let component = self.component, let environment = self.environment else {
                 return
             }
+            if DemoWallet.isEnabled, case .unique = gift {
+                self.confirmDemoGift(gift)
+                return
+            }
             let context = component.context
             let strings = environment.strings
             let currentTime = Int32(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)
@@ -311,7 +315,7 @@ final class GiftOptionsScreenComponent: Component {
                     mainController = controller
                 }
                 if case let .generic(gift) = gift {
-                    if !skipDateCheck, let lockedUntilDate = gift.lockedUntilDate, currentTime < lockedUntilDate {
+                    if !DemoWallet.isEnabled, !skipDateCheck, let lockedUntilDate = gift.lockedUntilDate, currentTime < lockedUntilDate {
                         self.loadingGiftId = gift.id
                         Queue.mainQueue().after(0.25) {
                             if self.loadingGiftId != nil {
@@ -817,7 +821,49 @@ final class GiftOptionsScreenComponent: Component {
             }
         }
         
+        private func confirmDemoGift(_ gift: StarGift) {
+            guard let component = self.component, let controller = self.environment?.controller(),
+                  let navigationController = controller.navigationController as? NavigationController else {
+                return
+            }
+            guard component.peerId.namespace == Namespaces.Peer.CloudUser else {
+                controller.present(textAlertController(context: component.context, title: "Демо", text: "Демо-подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+                return
+            }
+            let alert = textAlertController(context: component.context, title: "Демо-подарок", text: "Карточка появится только на этом устройстве. Stars и TON не списываются, владелец подарка не меняется.", actions: [
+                TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
+                TextAlertAction(type: .defaultAction, title: "Подарить · Демо", action: { [weak navigationController] in
+                    let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: gift, text: "")
+                    |> deliverOnMainQueue).startStandalone(completed: { [weak navigationController] in
+                        guard let navigationController else { return }
+                        var controllers = navigationController.viewControllers.filter {
+                            !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) && !($0 is PeerInfoScreen) && !($0 is ContactSelectionController)
+                        }
+                        var found = false
+                        for item in controllers.reversed() {
+                            if let chat = item as? ChatController, case .peer(id: component.peerId) = chat.chatLocation {
+                                chat.hintPlayNextOutgoingGift()
+                                found = true
+                                break
+                            }
+                        }
+                        if !found {
+                            let chat = component.context.sharedContext.makeChatController(context: component.context, chatLocation: .peer(id: component.peerId), subject: nil, botStart: nil, mode: .standard(.default), params: nil)
+                            chat.hintPlayNextOutgoingGift()
+                            controllers.append(chat)
+                        }
+                        navigationController.setViewControllers(controllers, animated: true)
+                    })
+                })
+            ])
+            controller.present(alert, in: .window(.root))
+        }
+
         func transferGift(_ transferGift: StarGift.UniqueGift) {
+            if DemoWallet.isEnabled {
+                self.confirmDemoGift(.unique(transferGift))
+                return
+            }
             guard let component = self.component, let environment = self.environment, let peer = self.state?.peer, let controller = environment.controller() as? GiftOptionsScreen else {
                 return
             }
@@ -1244,7 +1290,7 @@ final class GiftOptionsScreenComponent: Component {
                 transition: .immediate,
                 component: AnyComponent(MultilineTextComponent(
                     text: .plain(NSAttributedString(
-                        string: strings.Stars_Purchase_Balance,
+                        string: DemoWallet.isEnabled ? "Баланс · Демо" : strings.Stars_Purchase_Balance,
                         font: Font.regular(14.0),
                         textColor: theme.actionSheet.primaryTextColor
                     )),
@@ -1254,7 +1300,8 @@ final class GiftOptionsScreenComponent: Component {
                 containerSize: availableSize
             )
             
-            let formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
+            let displayBalance = DemoWallet.isEnabled ? StarsAmount(value: DemoWallet.load(accountId: component.context.account.peerId.toInt64()).stars, nanos: 0) : (self.starsState?.balance ?? StarsAmount.zero)
+            let formattedBalance = formatStarsAmountText(displayBalance, dateTimeFormat: environment.dateTimeFormat)
             let smallLabelFont = Font.regular(11.0)
             let labelFont = Font.semibold(14.0)
             let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
