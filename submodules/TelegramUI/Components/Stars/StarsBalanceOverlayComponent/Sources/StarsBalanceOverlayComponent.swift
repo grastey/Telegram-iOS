@@ -55,6 +55,7 @@ public final class StarsBalanceOverlayComponent: Component {
         private var starsBalance: Int64 = 0
         private var tonBalance: Int64 = 0
         private var balanceDisposable: Disposable?
+        private var walletObserver: NSObjectProtocol?
         
         private var starsRevenueStatsContext: StarsRevenueStatsContext?
         
@@ -74,6 +75,9 @@ public final class StarsBalanceOverlayComponent: Component {
         
         deinit {
             self.balanceDisposable?.dispose()
+            if let walletObserver = self.walletObserver {
+                NotificationCenter.default.removeObserver(walletObserver)
+            }
         }
         
         private var didTap = false
@@ -94,7 +98,16 @@ public final class StarsBalanceOverlayComponent: Component {
             self.component = component
             self.state = state
             
-            if self.balanceDisposable == nil {
+            if DemoWallet.isEnabled && component.peerId == component.context.account.peerId {
+                let wallet = DemoWallet.load(accountId: component.context.account.peerId.toInt64())
+                self.starsBalance = wallet.stars
+                self.tonBalance = wallet.tonNanograms
+                if self.walletObserver == nil {
+                    self.walletObserver = NotificationCenter.default.addObserver(forName: DemoWallet.didChange, object: nil, queue: .main) { [weak self] _ in
+                        self?.state?.updated()
+                    }
+                }
+            } else if self.balanceDisposable == nil {
                 if component.peerId == component.context.account.peerId {
                     if let starsContext = component.context.starsContext, let tonContext = component.context.tonContext {
                         self.balanceDisposable = combineLatest(queue: Queue.mainQueue(),
@@ -133,7 +146,7 @@ public final class StarsBalanceOverlayComponent: Component {
             }
             
             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
-            let balance = presentationStringsFormattedNumber(Int32(self.starsBalance), presentationData.dateTimeFormat.groupingSeparator)
+            let balance = presentationStringsFormattedNumber(Int32(clamping: self.starsBalance), presentationData.dateTimeFormat.groupingSeparator)
             
             let rawString: String
             if component.peerId == component.context.account.peerId {
