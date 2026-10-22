@@ -26,6 +26,39 @@ public func buyStarGiftImpl(
 ) {
     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
     if DemoWallet.isEnabled {
+        if !skipConfirmation, message == nil {
+            let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: recipientPeerId))
+            |> deliverOnMainQueue).start(next: { peer in
+                guard let peer, let controller = getController() else {
+                    return
+                }
+                let messageScreen = GiftMessageScreen(
+                    context: context,
+                    peer: peer,
+                    gift: uniqueGift,
+                    dismissOnCompletion: true,
+                    completion: { result in
+                        buyStarGiftImpl(
+                            context: context,
+                            recipientPeerId: recipientPeerId,
+                            uniqueGift: uniqueGift,
+                            showAttributes: showAttributes,
+                            acceptedPrice: acceptedPrice,
+                            skipConfirmation: true,
+                            message: result,
+                            starsTopUpOptions: starsTopUpOptions,
+                            buyGift: buyGift,
+                            getController: getController,
+                            updateProgress: updateProgress,
+                            updateIsBalanceVisible: updateIsBalanceVisible,
+                            completion: completion
+                        )
+                    }
+                )
+                controller.push(messageScreen)
+            })
+            return
+        }
         guard let controller = getController(), recipientPeerId.namespace == Namespaces.Peer.CloudUser else {
             return
         }
@@ -44,7 +77,7 @@ public func buyStarGiftImpl(
         let afterText = usesTon ? "\(remaining.tonText) TON" : "\(remaining.stars) Stars"
         let proceed = {
             updateProgress(true)
-            let _ = (addLocalDemoGift(account: context.account, peerId: recipientPeerId, gift: .unique(uniqueGift), text: message?.text ?? "")
+            let _ = (addLocalDemoGift(account: context.account, peerId: recipientPeerId, gift: .unique(uniqueGift), text: message?.text ?? "", entities: message?.entities)
             |> deliverOnMainQueue).startStandalone(completed: {
                 // Only the local presentation balance changes; no payment request is made.
                 let current = DemoWallet.load(accountId: accountId)
