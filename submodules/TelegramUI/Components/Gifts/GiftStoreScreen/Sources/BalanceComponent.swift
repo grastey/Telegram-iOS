@@ -43,6 +43,7 @@ final class BalanceComponent: Component {
         private var starsBalance: Int64 = 0
         private var tonBalance: Int64 = 0
         private var balanceDisposable: Disposable?
+        private var walletObserver: NSObjectProtocol?
                         
         override public init(frame: CGRect) {
             super.init(frame: frame)
@@ -56,6 +57,9 @@ final class BalanceComponent: Component {
         
         deinit {
             self.balanceDisposable?.dispose()
+            if let walletObserver = self.walletObserver {
+                NotificationCenter.default.removeObserver(walletObserver)
+            }
         }
         
         @objc private func pressed() {
@@ -74,7 +78,16 @@ final class BalanceComponent: Component {
             self.component = component
             self.componentState = state
             
-            if self.balanceDisposable == nil {
+            if DemoWallet.isEnabled {
+                let wallet = DemoWallet.load(accountId: component.context.account.peerId.toInt64())
+                self.starsBalance = wallet.stars
+                self.tonBalance = wallet.tonNanograms
+                if self.walletObserver == nil {
+                    self.walletObserver = NotificationCenter.default.addObserver(forName: DemoWallet.didChange, object: nil, queue: .main) { [weak self] _ in
+                        self?.componentState?.updated()
+                    }
+                }
+            } else if self.balanceDisposable == nil {
                 if let starsContext = component.context.starsContext, let tonContext = component.context.tonContext {
                     self.balanceDisposable = combineLatest(queue: Queue.mainQueue(),
                         starsContext.state,

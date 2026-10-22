@@ -1274,7 +1274,7 @@ final class GiftStoreScreenComponent: Component {
             guard let component = self.component, let starsContext = component.context.starsContext, let tonContext = component.context.tonContext, let controller = self.environment?.controller() else {
                 return
             }
-            let tonBalance = tonContext.currentState?.balance.value ?? 0
+            let tonBalance = DemoWallet.isEnabled ? DemoWallet.load(accountId: component.context.account.peerId.toInt64()).tonNanograms : (tonContext.currentState?.balance.value ?? 0)
             if tonBalance == 0 {
                 let starsController = component.context.sharedContext.makeStarsTransactionsScreen(context: component.context, starsContext: starsContext)
                 controller.push(starsController)
@@ -1292,8 +1292,9 @@ final class GiftStoreScreenComponent: Component {
             )
             |> take(1)
             |> map { [weak self] starsState, tonState -> [ContextMenuItem] in
-                let starsBalance = starsState?.balance ?? .zero
-                let tonBalance = tonState?.balance.value ?? 0
+                let wallet = DemoWallet.load(accountId: component.context.account.peerId.toInt64())
+                let starsBalance = DemoWallet.isEnabled ? StarsAmount(value: wallet.stars, nanos: 0) : (starsState?.balance ?? .zero)
+                let tonBalance = DemoWallet.isEnabled ? wallet.tonNanograms : (tonState?.balance.value ?? 0)
                 
                 var items: [ContextMenuItem] = []
                 
