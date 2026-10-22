@@ -26,8 +26,14 @@ defer {
         }
     }
 }
+var walletChangeCount = 0
+let walletObserver = NotificationCenter.default.addObserver(forName: DemoWallet.didChange, object: nil, queue: nil) { _ in
+    walletChangeCount += 1
+}
 DemoWallet(stars: 42, tonNanograms: 123).save(accountId: accountA)
 DemoWallet(stars: 99, tonNanograms: 456).save(accountId: accountB)
+NotificationCenter.default.removeObserver(walletObserver)
+precondition(walletChangeCount == 2, "Local balance displays were not notified of wallet saves")
 precondition(DemoWallet.load(accountId: accountA).stars == 42)
 precondition(DemoWallet.load(accountId: accountB).tonNanograms == 456)
 precondition(DemoWallet.load(accountId: accountA).stars == 42, "Writing account B overwrote A")
