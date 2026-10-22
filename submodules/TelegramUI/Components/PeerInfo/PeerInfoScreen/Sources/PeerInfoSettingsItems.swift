@@ -284,10 +284,10 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     }
     if DemoWallet.isEnabled {
         let wallet = DemoWallet.load(accountId: context.account.peerId.toInt64())
-        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .text("\(wallet.stars)"), text: "Stars · Демо", icon: PresentationResourcesSettings.stars, action: {
+        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .text("\(wallet.stars)"), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
             interaction.openSettings(.stars)
         }))
-        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .text(wallet.tonText), text: "TON · Демо", icon: PresentationResourcesSettings.gramEarnings, action: {
+        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .text(wallet.tonText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.gramEarnings, action: {
             interaction.openSettings(.ton)
         }))
     } else {

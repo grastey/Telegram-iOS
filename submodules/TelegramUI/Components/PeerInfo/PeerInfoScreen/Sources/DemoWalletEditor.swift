@@ -4,7 +4,7 @@ import TelegramCore
 
 func presentDemoWalletEditor(controller: UIViewController, accountId: Int64, completion: @escaping () -> Void) {
     let wallet = DemoWallet.load(accountId: accountId)
-    let alert = UIAlertController(title: "Демо-балансы", message: "Только на этом устройстве. Реальные Stars и TON не меняются.", preferredStyle: .alert)
+    let alert = UIAlertController(title: "Баланс", message: nil, preferredStyle: .alert)
     alert.addTextField { field in
         field.placeholder = "Stars"
         field.keyboardType = .numberPad
