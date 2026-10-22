@@ -2457,7 +2457,7 @@ private final class GiftViewSheetContent: CombinedComponent {
             let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
             let giftTitle = "\(uniqueGift.title) #\(formatCollectibleNumber(uniqueGift.number, dateTimeFormat: presentationData.dateTimeFormat))"
             
-            if let resellTooEarlyTimestamp = self.resellTooEarlyTimestamp {
+            if !DemoWallet.isEnabled, let resellTooEarlyTimestamp = self.resellTooEarlyTimestamp {
                 let dateString = stringForFullDate(timestamp: resellTooEarlyTimestamp, strings: presentationData.strings, dateTimeFormat: presentationData.dateTimeFormat)
                 let alertController = textAlertController(
                     context: context,
@@ -2472,7 +2472,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                 return
             }
             
-            guard let _ = self.buyForm else {
+            guard DemoWallet.isEnabled || self.buyForm != nil else {
                 let alertController = textAlertController(
                     context: context,
                     title: nil,

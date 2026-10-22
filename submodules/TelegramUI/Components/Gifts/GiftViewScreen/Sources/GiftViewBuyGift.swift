@@ -25,6 +25,43 @@ public func buyStarGiftImpl(
     completion: @escaping () -> Void
 ) {
     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+    if DemoWallet.isEnabled {
+        guard let controller = getController(), recipientPeerId.namespace == Namespaces.Peer.CloudUser else {
+            return
+        }
+        let price = acceptedPrice ?? uniqueGift.resellAmounts?.first
+        let accountId = context.account.peerId.toInt64()
+        let wallet = DemoWallet.load(accountId: accountId)
+        let cost = max(0, price?.amount.value ?? 0)
+        let usesTon = price?.currency == .ton
+        let remaining = usesTon
+            ? DemoWallet(stars: wallet.stars, tonNanograms: max(0, wallet.tonNanograms - cost))
+            : DemoWallet(stars: max(0, wallet.stars - cost), tonNanograms: wallet.tonNanograms)
+        let priceText = usesTon
+            ? "\(DemoWallet(stars: 0, tonNanograms: cost).tonText) TON"
+            : "\(cost) Stars"
+        let beforeText = usesTon ? "\(wallet.tonText) TON" : "\(wallet.stars) Stars"
+        let afterText = usesTon ? "\(remaining.tonText) TON" : "\(remaining.stars) Stars"
+        let proceed = {
+            updateProgress(true)
+            let _ = (addLocalDemoGift(account: context.account, peerId: recipientPeerId, gift: .unique(uniqueGift), text: message?.text ?? "")
+            |> deliverOnMainQueue).startStandalone(completed: {
+                // Only the local presentation balance changes; no payment request is made.
+                let current = DemoWallet.load(accountId: accountId)
+                let updated = usesTon
+                    ? DemoWallet(stars: current.stars, tonNanograms: max(0, current.tonNanograms - cost))
+                    : DemoWallet(stars: max(0, current.stars - cost), tonNanograms: current.tonNanograms)
+                updated.save(accountId: accountId)
+                updateProgress(false)
+                completion()
+            })
+        }
+        controller.present(textAlertController(context: context, title: "Отправить подарок", text: "Цена: \(priceText)\nБаланс: \(beforeText) → \(afterText)", actions: [
+            TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
+            TextAlertAction(type: .defaultAction, title: "Подарить", action: proceed)
+        ]), in: .window(.root))
+        return
+    }
                     
     let action: (CurrencyAmount.Currency, GiftMessageScreen.Result, @escaping () -> Void) -> Void = { currency, message, beforeCompletion in
         guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
