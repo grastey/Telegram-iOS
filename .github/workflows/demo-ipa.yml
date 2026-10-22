@@ -54,6 +54,12 @@ jobs:
           else:
               raise SystemExit("Required Xcode " + required + " is not installed on this runner.")
           PY
+      - name: Install required Metal compiler
+        run: |
+          if ! xcrun metal --version; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          xcrun metal --version
       - name: Check local demo wallet
         run: |
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"
