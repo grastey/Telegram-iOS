@@ -119,7 +119,7 @@ jobs:
           app = apps[0]
           with (app / "Info.plist").open("rb") as stream:
               info = plistlib.load(stream)
-          info["CFBundleDisplayName"] = "DemoGram · Demo"
+          info["CFBundleDisplayName"] = "GhostGram"
           with (app / "Info.plist").open("wb") as stream:
               plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY)
           # Free personal signing has a small App ID allowance; exclude extensions.

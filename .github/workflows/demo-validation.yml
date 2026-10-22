@@ -24,6 +24,8 @@ jobs:
           swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
       - name: Report required and available Xcode versions
         run: |
