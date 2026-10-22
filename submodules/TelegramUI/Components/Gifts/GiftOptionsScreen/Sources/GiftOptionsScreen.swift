@@ -90,6 +90,7 @@ final class GiftOptionsScreenComponent: Component {
         case resale
         case stars(Int64)
         case transfer
+        case demo
         
         init(rawValue: Int64) {
             switch rawValue {
@@ -103,6 +104,8 @@ final class GiftOptionsScreenComponent: Component {
                 self = .transfer
             case -4:
                 self = .resale
+            case -5:
+                self = .demo
             default:
                 self = .stars(rawValue)
             }
@@ -120,6 +123,8 @@ final class GiftOptionsScreenComponent: Component {
                 return -3
             case .resale:
                 return -4
+            case .demo:
+                return -5
             case let .stars(stars):
                 return stars
             }
@@ -190,7 +195,7 @@ final class GiftOptionsScreenComponent: Component {
                         }
                         let filteredGifts: [StarGift] = sortedGifts.filter {
                             switch self.starsFilter {
-                            case .all:
+                            case .all, .demo:
                                 return true
                             case .limited:
                                 if case let .generic(gift) = $0 {
@@ -315,6 +320,14 @@ final class GiftOptionsScreenComponent: Component {
                     mainController = controller
                 }
                 if case let .generic(gift) = gift {
+                    if DemoWallet.isEnabled, self.starsFilter == .demo {
+                        if let availability = gift.availability, availability.resale > 0 {
+                            mainController.push(component.context.sharedContext.makeGiftStoreController(context: component.context, peerId: component.peerId, gift: gift))
+                        } else {
+                            mainController.push(GiftSetupScreen(context: component.context, peerId: component.peerId, subject: .starGift(gift, nil), completion: component.completion))
+                        }
+                        return
+                    }
                     if !DemoWallet.isEnabled, !skipDateCheck, let lockedUntilDate = gift.lockedUntilDate, currentTime < lockedUntilDate {
                         self.loadingGiftId = gift.id
                         Queue.mainQueue().after(0.25) {
@@ -827,12 +840,12 @@ final class GiftOptionsScreenComponent: Component {
                 return
             }
             guard component.peerId.namespace == Namespaces.Peer.CloudUser else {
-                controller.present(textAlertController(context: component.context, title: "Демо", text: "Демо-подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+                controller.present(textAlertController(context: component.context, title: "Каталог", text: "Подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
                 return
             }
-            let alert = textAlertController(context: component.context, title: "Демо-подарок", text: "Карточка появится только на этом устройстве. Stars и TON не списываются, владелец подарка не меняется.", actions: [
+            let alert = textAlertController(context: component.context, title: "Отправить подарок", text: "Отправить выбранный подарок?", actions: [
                 TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
-                TextAlertAction(type: .defaultAction, title: "Подарить · Демо", action: { [weak navigationController] in
+                TextAlertAction(type: .defaultAction, title: "Подарить", action: { [weak navigationController] in
                     let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: gift, text: "")
                     |> deliverOnMainQueue).startStandalone(completed: { [weak navigationController] in
                         guard let navigationController else { return }
@@ -1290,7 +1303,7 @@ final class GiftOptionsScreenComponent: Component {
                 transition: .immediate,
                 component: AnyComponent(MultilineTextComponent(
                     text: .plain(NSAttributedString(
-                        string: DemoWallet.isEnabled ? "Баланс · Демо" : strings.Stars_Purchase_Balance,
+                        string: DemoWallet.isEnabled ? "Баланс" : strings.Stars_Purchase_Balance,
                         font: Font.regular(14.0),
                         textColor: theme.actionSheet.primaryTextColor
                     )),
@@ -1727,6 +1740,13 @@ final class GiftOptionsScreenComponent: Component {
                     tabSelectorItems.append(TabSelectorComponent.Item(
                         id: AnyHashable(StarsFilter.resale.rawValue),
                         title: strings.Gift_Options_Gift_Filter_Collectibles
+                    ))
+                }
+
+                if DemoWallet.isEnabled {
+                    tabSelectorItems.append(TabSelectorComponent.Item(
+                        id: AnyHashable(StarsFilter.demo.rawValue),
+                        title: "Каталог"
                     ))
                 }
                 
