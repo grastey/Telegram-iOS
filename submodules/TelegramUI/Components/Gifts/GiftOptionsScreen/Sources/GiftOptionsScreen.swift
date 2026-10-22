@@ -90,7 +90,6 @@ final class GiftOptionsScreenComponent: Component {
         case resale
         case stars(Int64)
         case transfer
-        case demo
         
         init(rawValue: Int64) {
             switch rawValue {
@@ -104,8 +103,6 @@ final class GiftOptionsScreenComponent: Component {
                 self = .transfer
             case -4:
                 self = .resale
-            case -5:
-                self = .demo
             default:
                 self = .stars(rawValue)
             }
@@ -123,8 +120,6 @@ final class GiftOptionsScreenComponent: Component {
                 return -3
             case .resale:
                 return -4
-            case .demo:
-                return -5
             case let .stars(stars):
                 return stars
             }
@@ -195,7 +190,7 @@ final class GiftOptionsScreenComponent: Component {
                         }
                         let filteredGifts: [StarGift] = sortedGifts.filter {
                             switch self.starsFilter {
-                            case .all, .demo:
+                            case .all:
                                 return true
                             case .limited:
                                 if case let .generic(gift) = $0 {
@@ -216,6 +211,7 @@ final class GiftOptionsScreenComponent: Component {
                                     }
                                 }
                             case .resale:
+                                if DemoWallet.isEnabled { return true }
                                 if case let .generic(gift) = $0 {
                                     if let availability = gift.availability, availability.resale > 0 {
                                         return true
@@ -238,6 +234,7 @@ final class GiftOptionsScreenComponent: Component {
         private var isUpdating: Bool = false
         
         private var starsStateDisposable: Disposable?
+        private var walletObserver: NSObjectProtocol?
         private var starsState: StarsContext.State?
         
         private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
@@ -287,6 +284,9 @@ final class GiftOptionsScreenComponent: Component {
         
         deinit {
             self.starsStateDisposable?.dispose()
+            if let walletObserver = self.walletObserver {
+                NotificationCenter.default.removeObserver(walletObserver)
+            }
             self.auctionDisposable.dispose()
         }
 
@@ -320,7 +320,7 @@ final class GiftOptionsScreenComponent: Component {
                     mainController = controller
                 }
                 if case let .generic(gift) = gift {
-                    if DemoWallet.isEnabled, self.starsFilter == .demo {
+                    if DemoWallet.isEnabled, self.starsFilter == .all {
                         if let availability = gift.availability, availability.resale > 0 {
                             mainController.push(component.context.sharedContext.makeGiftStoreController(context: component.context, peerId: component.peerId, gift: gift))
                         } else {
@@ -1086,6 +1086,11 @@ final class GiftOptionsScreenComponent: Component {
             let previousStarsFilter = self.appliedStarsFilter
             self.appliedStarsFilter = self.starsFilter
             
+            if DemoWallet.isEnabled, self.walletObserver == nil {
+                self.walletObserver = NotificationCenter.default.addObserver(forName: DemoWallet.didChange, object: nil, queue: .main) { [weak self] _ in
+                    self?.state?.updated()
+                }
+            }
             if self.component == nil {
                 self.starsStateDisposable = (component.starsContext.state
                 |> deliverOnMainQueue).start(next: { [weak self] state in
@@ -1736,19 +1741,13 @@ final class GiftOptionsScreenComponent: Component {
                     }
                 }
                 
-                if hasResale {
+                if hasResale || DemoWallet.isEnabled {
                     tabSelectorItems.append(TabSelectorComponent.Item(
                         id: AnyHashable(StarsFilter.resale.rawValue),
                         title: strings.Gift_Options_Gift_Filter_Collectibles
                     ))
                 }
 
-                if DemoWallet.isEnabled {
-                    tabSelectorItems.append(TabSelectorComponent.Item(
-                        id: AnyHashable(StarsFilter.demo.rawValue),
-                        title: "Каталог"
-                    ))
-                }
                 
                 let tabSelectorSize = self.tabSelector.update(
                     transition: transition,
