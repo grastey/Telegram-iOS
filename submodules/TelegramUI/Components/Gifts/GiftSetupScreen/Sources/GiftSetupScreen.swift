@@ -379,8 +379,54 @@ private final class GiftSetupScreenComponent: Component {
                     self.proceedWithPremiumGift()
                 }
             case .starGift:
-                self.proceedWithStarGift()
+                if DemoWallet.isEnabled {
+                    self.proceedWithDemoGift()
+                } else {
+                    self.proceedWithStarGift()
+                }
             }
+        }
+
+        private func proceedWithDemoGift() {
+            guard !self.inProgress, let component = self.component,
+                  let controller = self.environment?.controller(),
+                  let navigationController = controller.navigationController as? NavigationController else {
+                return
+            }
+            guard case let .starGift(gift, _) = component.subject,
+                  component.peerId.namespace == Namespaces.Peer.CloudUser else {
+                controller.present(textAlertController(context: component.context, title: "Демо", text: "Демо-подарки доступны в личной переписке.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+                return
+            }
+            self.inProgress = true
+            self.state?.updated()
+            var text = ""
+            if let inputPanelView = self.inputPanel.view as? MessageInputPanelComponent.View,
+               case let .text(value) = inputPanelView.getSendMessageInput() {
+                text = value.string
+            }
+            let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: .generic(gift), text: text)
+            |> deliverOnMainQueue).startStandalone(completed: { [weak self, weak navigationController] in
+                self?.inProgress = false
+                guard let navigationController else { return }
+                var controllers = navigationController.viewControllers.filter {
+                    !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) && !($0 is PeerInfoScreen) && !($0 is ContactSelectionController)
+                }
+                var found = false
+                for item in controllers.reversed() {
+                    if let chat = item as? ChatController, case .peer(id: component.peerId) = chat.chatLocation {
+                        chat.hintPlayNextOutgoingGift()
+                        found = true
+                        break
+                    }
+                }
+                if !found {
+                    let chat = component.context.sharedContext.makeChatController(context: component.context, chatLocation: .peer(id: component.peerId), subject: nil, botStart: nil, mode: .standard(.default), params: nil)
+                    chat.hintPlayNextOutgoingGift()
+                    controllers.append(chat)
+                }
+                navigationController.setViewControllers(controllers, animated: true)
+            })
         }
         
         private func proceedWithPremiumGift() {
@@ -1925,7 +1971,7 @@ private final class GiftSetupScreenComponent: Component {
             }
             
             var buttonIsEnabled = true
-            let buttonString: String
+            var buttonString: String
             switch component.subject {
             case let .premium(product):
                 if self.payWithStars, let starsPrice = product.starsPrice {
@@ -1948,6 +1994,11 @@ private final class GiftSetupScreenComponent: Component {
                 }
             }
             
+            if DemoWallet.isEnabled, case .starGift = component.subject {
+                buttonString = "Подарить · Демо"
+                buttonIsEnabled = true
+            }
+
             var buttonTitleItems: [AnyComponentWithIdentity<Empty>] = []
             if let _ = self.giftAuction {
                 var isUpcoming = false
