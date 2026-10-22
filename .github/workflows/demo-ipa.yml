@@ -1,0 +1,144 @@
+# Runner reference: https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available/
+name: Build DemoGram IPA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - demo-local-gifts
+    paths:
+      - .github/workflows/demo-ipa.yml
+permissions:
+  contents: read
+concurrency:
+  group: demogram-ipa
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 180
+    steps:
+      - name: Check Telegram app credentials
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          if not re.fullmatch(r"[1-9][0-9]*", os.environ.get("TELEGRAM_API_ID", "")):
+              raise SystemExit("Add repository secret TELEGRAM_API_ID, then re-run this job.")
+          if not re.fullmatch(r"[0-9a-fA-F]{32}", os.environ.get("TELEGRAM_API_HASH", "")):
+              raise SystemExit("Add repository secret TELEGRAM_API_HASH, then re-run this job.")
+          print("Telegram application credentials are configured.")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Select required Xcode
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          required = json.load(open("versions.json"))["xcode"]
+          candidates = list(pathlib.Path("/Applications").glob("Xcode*.app"))
+          for app in candidates:
+              developer = app / "Contents/Developer"
+              version = subprocess.check_output([str(developer / "usr/bin/xcodebuild"), "-version"], text=True)
+              if version.splitlines()[0] == "Xcode " + required:
+                  subprocess.run(["sudo", "xcode-select", "-s", str(developer)], check=True)
+                  print(version)
+                  break
+          else:
+              raise SystemExit("Required Xcode " + required + " is not installed on this runner.")
+          PY
+      - name: Check local demo wallet
+        run: |
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"
+          "$RUNNER_TEMP/demo-wallet-tests"
+      - name: Prepare build configuration
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          config = json.load(open("build-system/appstore-configuration.json"))
+          config.update(api_id=os.environ["TELEGRAM_API_ID"], api_hash=os.environ["TELEGRAM_API_HASH"],
+                        is_internal_build="true", is_appstore_build="false", app_specific_url_scheme="demogram",
+                        premium_iap_product_id="", enable_siri=False, enable_icloud=False)
+          # Use upstream's public fake signing material to produce an intermediate IPA.
+          # Installation requires re-signing with the owner's Apple account and distinct bundle ID.
+          path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "demogram-config.json"
+          path.write_text(json.dumps(config))
+          path.chmod(0o600)
+          PY
+      - name: Import public build-only signing material
+        run: python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+      - name: Compile device IPA
+        run: |
+          python3 -u build-system/Make/Make.py \
+            --cacheDir="$RUNNER_TEMP/telegram-bazel-cache" \
+            build \
+            --configurationPath="$RUNNER_TEMP/demogram-config.json" \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$GITHUB_RUN_NUMBER" \
+            --outputBuildArtifactsPath="$RUNNER_TEMP/demogram-artifacts"
+      - name: Package demo app for personal re-signing
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, plistlib, shutil, tempfile, zipfile
+          artifacts = pathlib.Path(os.environ["RUNNER_TEMP"]) / "demogram-artifacts"
+          ipa = artifacts / "Telegram.ipa"
+          if not ipa.is_file():
+              raise SystemExit("Build completed without the expected Telegram.ipa.")
+          stage = pathlib.Path(tempfile.mkdtemp(prefix="demogram-", dir=os.environ["RUNNER_TEMP"]))
+          original_modes = {}
+          with zipfile.ZipFile(ipa) as archive:
+              for member in archive.infolist():
+                  target = (stage / member.filename).resolve()
+                  if not target.is_relative_to(stage.resolve()):
+                      raise SystemExit("Unsafe path in generated IPA.")
+                  archive.extract(member, stage)
+                  mode = member.external_attr >> 16
+                  original_modes[member.filename] = mode
+                  if mode:
+                      target.chmod(mode)
+          apps = list((stage / "Payload").glob("*.app"))
+          if len(apps) != 1:
+              raise SystemExit("Expected one main application.")
+          app = apps[0]
+          with (app / "Info.plist").open("rb") as stream:
+              info = plistlib.load(stream)
+          info["CFBundleDisplayName"] = "DemoGram · Demo"
+          with (app / "Info.plist").open("wb") as stream:
+              plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY)
+          # Free personal signing has a small App ID allowance; exclude extensions.
+          for name in ["PlugIns", "Watch"]:
+              target = app / name
+              if target.is_dir():
+                  shutil.rmtree(target)
+          output = pathlib.Path("demo-output")
+          output.mkdir(exist_ok=True)
+          with zipfile.ZipFile(output / "DemoGram-resign-required.ipa", "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(stage.rglob("*")):
+                  if path.is_file():
+                      name = path.relative_to(stage).as_posix()
+                      entry = zipfile.ZipInfo.from_file(path, name)
+                      entry.create_system = 3
+                      if original_modes.get(name):
+                          entry.external_attr = original_modes[name] << 16
+                      entry.compress_type = zipfile.ZIP_DEFLATED
+                      with path.open("rb") as source, archive.open(entry, "w") as destination:
+                          shutil.copyfileobj(source, destination)
+          (output / "READ-ME.txt").write_text("Demo build. Re-sign with your own Apple account and a unique bundle ID before installing. This IPA is not App Store signed. Demo Stars/TON and gift cards exist only on this device.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DemoGram-personal-resigning-required
+          path: demo-output/
+          if-no-files-found: error
+          retention-days: 3
+      - name: Remove temporary application credentials
+        if: always()
+        run: python3 -c 'import os,pathlib; (pathlib.Path(os.environ["RUNNER_TEMP"])/"demogram-config.json").unlink(missing_ok=True)'
