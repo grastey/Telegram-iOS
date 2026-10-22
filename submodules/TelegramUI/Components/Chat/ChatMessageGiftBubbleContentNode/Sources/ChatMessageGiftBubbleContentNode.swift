@@ -29,6 +29,16 @@ import PeerInfoCoverComponent
 import GiftItemComponent
 import TextSelectionNode
 
+private func localGiftCaption(_ caption: String?, isDemo: Bool) -> String? {
+    guard isDemo, let caption else { return caption }
+    let legacyPrefix = "ДЕМО • Только на этом устройстве"
+    if caption == legacyPrefix { return nil }
+    if caption.hasPrefix(legacyPrefix + "\n") {
+        return String(caption.dropFirst(legacyPrefix.count + 1))
+    }
+    return caption
+}
+
 private func attributedServiceMessageString(theme: ChatPresentationThemeData, strings: PresentationStrings, nameDisplayOrder: PresentationPersonNameOrder, dateTimeFormat: PresentationDateTimeFormat, message: EngineMessage, accountPeerId: EnginePeer.Id) -> NSAttributedString? {
     return universalServiceMessageString(presentationData: (theme.theme, theme.wallpaper), strings: strings, nameDisplayOrder: nameDisplayOrder, dateTimeFormat: dateTimeFormat, message: message, accountPeerId: accountPeerId, forChatList: false, forForumOverview: false, forAdditionalServiceMessage: true)
 }
@@ -702,7 +712,8 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                 buttonTitle = item.presentationData.strings.Notification_PremiumPrize_View
                                 hasServiceMessage = false
                             }
-                        case let .starGift(gift, convertStars, giftText, giftEntities, _, savedToProfile, converted, upgraded, canUpgrade, upgradeStars, isRefunded, isPrepaidUpgrade, _, channelPeerId, senderPeerId, _, _, _, _, _, toPeerId, _):
+                        case let .starGift(gift, convertStars, rawGiftText, giftEntities, _, savedToProfile, converted, upgraded, canUpgrade, upgradeStars, isRefunded, isPrepaidUpgrade, _, channelPeerId, senderPeerId, _, _, _, _, _, toPeerId, _):
+                            let giftText = localGiftCaption(rawGiftText, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
                             var incoming = incoming
                             var convertStars = convertStars
                             if case let .generic(gift) = gift {
@@ -834,7 +845,8 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                     }
                                 }
                             }
-                        case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, senderId, _, _, _, _, _, _, fromOffer, _, isCrafted, giftText, giftEntities, _):
+                        case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, senderId, _, _, _, _, _, _, fromOffer, _, isCrafted, rawGiftText, giftEntities, _):
+                            let giftText = localGiftCaption(rawGiftText, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
                             if case let .unique(uniqueGiftValue) = gift {
                                 isStarGift = true
                                 giftMessageText = giftText
@@ -993,11 +1005,6 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                 
                 let (labelLayout, labelApply) = makeLabelLayout(TextNodeLayoutArguments(attributedString: attributedString, backgroundColor: nil, maximumNumberOfLines: 0, truncationType: .end, constrainedSize: CGSize(width: constrainedSize.width - 32.0, height: CGFloat.greatestFiniteMagnitude), alignment: .center, cutout: nil, insets: UIEdgeInsets()))
                 
-                if DemoWallet.isEnabled, isStarGift, item.message.id.namespace == Namespaces.Message.Local,
-                   item.message.text == "ДЕМО • Подарок не отправлен" {
-                    title = "ДЕМО • " + title
-                    text = "Только на этом устройстве. Подарок не отправлен."
-                }
                 let titleAttributedString = NSMutableAttributedString(attributedString: NSAttributedString(string: title, font: Font.semibold(15.0), textColor: primaryTextColor, paragraphAlignment: .center))
                 var updatedCachedTonImage: (UIImage, UIColor)? = cachedTonImage
                 if let range = titleAttributedString.string.range(of: "$") {
