@@ -17,6 +17,10 @@ public enum GhostGramSyncStorage {
     }
 
     public static func saveToken(accountId: Int64, token: String?) -> Bool {
+        return saveTokenStatus(accountId: accountId, token: token) == errSecSuccess
+    }
+
+    public static func saveTokenStatus(accountId: Int64, token: String?) -> Int32 {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: String(accountId)]
         let status: OSStatus
@@ -34,7 +38,7 @@ public enum GhostGramSyncStorage {
             status = deleted == errSecItemNotFound ? errSecSuccess : deleted
         }
         if status == errSecSuccess { NotificationCenter.default.post(name: changed, object: nil) }
-        return status == errSecSuccess
+        return status
     }
 
     private static func outboxKey(_ accountId: Int64) -> String { return "ghostgram.sync.\(accountId).outbox" }

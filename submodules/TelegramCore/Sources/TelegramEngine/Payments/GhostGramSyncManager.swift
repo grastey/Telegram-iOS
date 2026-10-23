@@ -78,7 +78,7 @@ public final class GhostGramSyncManager {
     }
 
     private func tick() {
-        let id = self.account.peerId.toInt64()
+        let id = self.account.peerId.id._internalGetInt64Value()
         guard self.active, !self.busy, let token = GhostGramSyncStorage.token(accountId: id) else { return }
         self.busy = true
         if self.verifiedToken != token {
@@ -111,7 +111,7 @@ public final class GhostGramSyncManager {
     private func poll(token: String) {
         guard self.active, !self.busy else { return }
         self.busy = true
-        let id = self.account.peerId.toInt64()
+        let id = self.account.peerId.id._internalGetInt64Value()
         let after = GhostGramSyncStorage.cursor(accountId: id)
         self.request("/v1/events?after=\(after)", token: token) { [weak self] status, data in
             guard let self else { return }
@@ -136,7 +136,7 @@ public final class GhostGramSyncManager {
     private func importEvents(_ events: [GhostGramGiftEvent], index: Int, previousSequence: Int64, completion: @escaping (Bool) -> Void) {
         guard index < events.count else { completion(true); return }
         let event = events[index]
-        let id = self.account.peerId.toInt64()
+        let id = self.account.peerId.id._internalGetInt64Value()
         guard event.belongs(to: String(id)), event.seq > previousSequence,
             let sender = Int64(event.sender), let recipient = Int64(event.recipient),
             event.comment.unicodeScalars.count <= 1024, UUID(uuidString: event.client_id) != nil else { completion(false); return }

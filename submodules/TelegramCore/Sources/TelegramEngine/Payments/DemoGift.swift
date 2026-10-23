@@ -11,15 +11,15 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
     let authorId = syncAuthorId ?? account.peerId
     let incoming = authorId != account.peerId
     var uniqueId = syncUniqueId
-    if synchronize, GhostGramSyncStorage.token(accountId: account.peerId.toInt64()) != nil {
+    if synchronize, GhostGramSyncStorage.token(accountId: account.peerId.id._internalGetInt64Value()) != nil {
         let reference: GhostGramGiftReference
         switch gift {
         case let .generic(value): reference = GhostGramGiftReference(regularId: value.id)
         case let .unique(value): reference = GhostGramGiftReference(collectibleSlug: value.slug)
         }
-        let submission = GhostGramGiftSubmission(recipient: String(peerId.toInt64()), gift: reference, comment: text)
-        if text.unicodeScalars.count <= 1024, GhostGramSyncStorage.enqueue(accountId: account.peerId.toInt64(), submission: submission) {
-            uniqueId = GhostGramSyncStorage.messageUniqueId(sender: String(account.peerId.toInt64()), clientId: submission.client_id)
+        let submission = GhostGramGiftSubmission(recipient: String(peerId.id._internalGetInt64Value()), gift: reference, comment: text)
+        if text.unicodeScalars.count <= 1024, GhostGramSyncStorage.enqueue(accountId: account.peerId.id._internalGetInt64Value(), submission: submission) {
+            uniqueId = GhostGramSyncStorage.messageUniqueId(sender: String(account.peerId.id._internalGetInt64Value()), clientId: submission.client_id)
         }
     }
     let finalUniqueId = uniqueId
