@@ -23,6 +23,13 @@ jobs:
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift "$RUNNER_TEMP/ghostgram-wire/main.swift" -o "$RUNNER_TEMP/ghostgram-wire/tests"
           "$RUNNER_TEMP/ghostgram-wire/tests"
           swiftc -typecheck submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncStorage.swift
+      - name: Test actual Postbox user ID conversion
+        run: |
+          mkdir -p "$RUNNER_TEMP/ghostgram-peer-id"
+          python3 -c 'from pathlib import Path; import os; source=Path("submodules/Postbox/Sources/Peer.swift").read_text(); Path(os.environ["RUNNER_TEMP"], "ghostgram-peer-id", "PeerId.swift").write_text(source.split("public protocol Peer:", 1)[0])'
+          cp demo-tests/peer-id-main.swift "$RUNNER_TEMP/ghostgram-peer-id/main.swift"
+          swiftc "$RUNNER_TEMP/ghostgram-peer-id/PeerId.swift" "$RUNNER_TEMP/ghostgram-peer-id/main.swift" -o "$RUNNER_TEMP/ghostgram-peer-id/tests"
+          "$RUNNER_TEMP/ghostgram-peer-id/tests"
       - name: Parse modified Swift files
         run: |
           swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncManager.swift
