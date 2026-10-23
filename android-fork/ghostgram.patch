@@ -1,9 +1,9 @@
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
 new file mode 100644
-index 0000000..55c2e54
+index 0000000..c0c3e3e
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
-@@ -0,0 +1,348 @@
+@@ -0,0 +1,357 @@
 +package org.telegram.messenger;
 +
 +import android.app.AlertDialog;
@@ -214,9 +214,13 @@ index 0000000..55c2e54
 +    }
 +
 +    public void send(long recipient, TL_stars.StarGift gift, TLRPC.TL_textWithEntities text, Utilities.Callback2<Boolean, String> done) {
++        send(recipient, gift, text, false, gift == null ? 0 : gift.stars, done);
++    }
++
++    public void send(long recipient, TL_stars.StarGift gift, TLRPC.TL_textWithEntities text, boolean ton, long cost, Utilities.Callback2<Boolean, String> done) {
 +        try {
 +            if (gift == null) throw new Exception("Gift unavailable");
-+            if (!enabled() || recipient <= 0 || recipient == userId) throw new Exception("Not enabled");
++            if (!validAccount() || recipient <= 0) throw new Exception("Not enabled");
 +            String comment = text == null || text.text == null ? "" : text.text;
 +            if (comment.codePointCount(0, comment.length()) > 1024) throw new Exception("Caption too long");
 +            JSONObject reference = new JSONObject();
@@ -224,7 +228,8 @@ index 0000000..55c2e54
 +            else reference.put("kind", "regular").put("id", String.valueOf(gift.id));
 +            String clientId = UUID.randomUUID().toString();
 +            JSONObject body = new JSONObject().put("client_id", clientId).put("recipient", String.valueOf(recipient)).put("gift", reference).put("comment", comment);
-+            if (!enqueue(body)) throw new Exception("Outbox full");
++            if (enabled() && recipient != userId && !enqueue(body)) throw new Exception("Outbox full");
++            GhostGramWallet.rememberCost(account, clientId, cost, ton);
 +            JSONObject event = new JSONObject(body.toString()).put("sender", String.valueOf(userId)).put("synthetic", true)
 +                    .put("created", ConnectionsManager.getInstance(account).getCurrentTime());
 +            NETWORK.execute(() -> {
@@ -280,7 +285,7 @@ index 0000000..55c2e54
 +                boolean exists;
 +                SQLiteCursor cursor = storage.getDatabase().queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = ? AND uid = ? LIMIT 1", random, dialog);
 +                try { exists = cursor.next(); } finally { cursor.dispose(); }
-+                if (exists) { success.set(true); return; }
++                if (exists) { if (sender == userId) GhostGramWallet.spendOnce(account, event.getString("client_id")); success.set(true); return; }
 +                TLRPC.TL_messageService message = new TLRPC.TL_messageService();
 +                message.local_id = message.id = UserConfig.getInstance(account).getNewMessageId();
 +                message.random_id = random;
@@ -309,12 +314,16 @@ index 0000000..55c2e54
 +                storage.putMessages(messages, true, false, false, 0, 0, 0);
 +                SQLiteCursor check = storage.getDatabase().queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = ? AND uid = ? LIMIT 1", random, dialog);
 +                try { success.set(check.next()); } finally { check.dispose(); }
++                if (success.get() && sender == userId) GhostGramWallet.spendOnce(account, event.getString("client_id"));
 +                if (success.get()) AndroidUtilities.runOnUIThread(() -> {
 +                    if (!validAccount()) return;
 +                    UserConfig.getInstance(account).saveConfig(false);
 +                    ArrayList<MessageObject> objects = new ArrayList<>(); objects.add(new MessageObject(account, message, false, true));
 +                    MessagesController.getInstance(account).updateInterfaceWithMessages(dialog, objects, 0);
 +                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
++                    if (foreground && org.telegram.ui.LaunchActivity.instance != null && org.telegram.ui.LaunchActivity.instance.getFireworksOverlay() != null) {
++                        org.telegram.ui.LaunchActivity.instance.getFireworksOverlay().start(true);
++                    }
 +                });
 +            } catch (Exception ignored) { success.set(false); }
 +            finally { finished.countDown(); }
@@ -352,6 +361,242 @@ index 0000000..55c2e54
 +                }).show();
 +    }
 +}
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java
+new file mode 100644
+index 0000000..78db357
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java
+@@ -0,0 +1,60 @@
++package org.telegram.messenger;
++
++import android.app.AlertDialog;
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.text.InputType;
++import android.widget.EditText;
++import android.widget.LinearLayout;
++import android.widget.Toast;
++import java.math.BigDecimal;
++import org.telegram.messenger.utils.tlutils.AmountUtils;
++
++/** Account-local presentation wallet. Never supplies a Telegram payment request. */
++public final class GhostGramWallet {
++    private static SharedPreferences prefs(int account) {
++        return ApplicationLoader.applicationContext.getSharedPreferences("ghostgram_wallet_" + UserConfig.getInstance(account).getClientUserId(), Context.MODE_PRIVATE);
++    }
++    public static long stars(int account) { return prefs(account).getLong("stars", 100_000); }
++    public static long ton(int account) { return prefs(account).getLong("ton", 100_000_000_000L); }
++    public static AmountUtils.Amount amount(int account, AmountUtils.Currency currency) {
++        long nanos = currency == AmountUtils.Currency.TON ? ton(account) : Math.min(stars(account), Long.MAX_VALUE / 1_000_000_000L) * 1_000_000_000L;
++        return AmountUtils.Amount.fromNano(nanos, currency);
++    }
++    public static void changed(int account) {
++        AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.starBalanceUpdated));
++    }
++    public static synchronized void rememberCost(int account, String id, long cost, boolean ton) {
++        prefs(account).edit().putLong("cost." + id, Math.max(0, cost)).putBoolean("ton." + id, ton).commit();
++    }
++    public static synchronized void spendOnce(int account, String id) {
++        SharedPreferences p = prefs(account);
++        if (!p.contains("cost." + id)) return;
++        boolean isTon = p.getBoolean("ton." + id, false);
++        GhostGramWalletMath next = new GhostGramWalletMath(stars(account), ton(account)).spend(isTon, p.getLong("cost." + id, 0));
++        if (p.edit().putLong(isTon ? "ton" : "stars", isTon ? next.ton : next.stars)
++                .remove("cost." + id).remove("ton." + id).commit()) changed(account);
++    }
++    public static void showEditor(Context context, int account) {
++        LinearLayout layout = new LinearLayout(context);
++        layout.setOrientation(LinearLayout.VERTICAL);
++        int inset = AndroidUtilities.dp(24); layout.setPadding(inset, inset / 2, inset, 0);
++        EditText stars = new EditText(context); stars.setSingleLine(true); stars.setHint("Stars");
++        stars.setInputType(InputType.TYPE_CLASS_NUMBER); stars.setText(String.valueOf(stars(account))); layout.addView(stars);
++        EditText ton = new EditText(context); ton.setSingleLine(true); ton.setHint("TON");
++        ton.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
++        ton.setText(BigDecimal.valueOf(ton(account), 9).stripTrailingZeros().toPlainString()); layout.addView(ton);
++        AlertDialog dialog = new AlertDialog.Builder(context).setTitle("Баланс").setView(layout)
++                .setNegativeButton("Отмена", null).setPositiveButton("Сохранить", null).create();
++        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
++            try {
++                long s = GhostGramWalletMath.parseStars(stars.getText().toString().trim());
++                long t = GhostGramWalletMath.parseTon(ton.getText().toString().trim());
++                if (s < 0 || s > 1_000_000_000_000L || t < 0 || t > 1_000_000_000_000_000_000L) throw new IllegalArgumentException();
++                if (!prefs(account).edit().putLong("stars", s).putLong("ton", t).commit()) throw new IllegalStateException();
++                changed(account); dialog.dismiss();
++            } catch (Exception error) { Toast.makeText(context, "Проверь Stars и TON (до 9 знаков после запятой)", Toast.LENGTH_LONG).show(); }
++        }));
++        dialog.show();
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java
+new file mode 100644
+index 0000000..c8e070a
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java
+@@ -0,0 +1,31 @@
++package org.telegram.messenger;
++
++import java.math.BigDecimal;
++
++/** Exact local wallet arithmetic, independent of Android and payment APIs. */
++public final class GhostGramWalletMath {
++    public static final long MAX_STARS = 1_000_000_000_000L;
++    public static final long MAX_TON = 1_000_000_000_000_000_000L;
++    public final long stars, ton;
++    public GhostGramWalletMath(long stars, long ton) {
++        this.stars = Math.max(0, Math.min(MAX_STARS, stars));
++        this.ton = Math.max(0, Math.min(MAX_TON, ton));
++    }
++    public GhostGramWalletMath spend(boolean inTon, long cost) {
++        cost = Math.max(0, cost);
++        return new GhostGramWalletMath(inTon ? stars : (stars > cost ? stars - cost : 0),
++                inTon ? (ton > cost ? ton - cost : 0) : ton);
++    }
++    public static long parseStars(String text) {
++        if (!text.matches("[0-9]+")) throw new IllegalArgumentException();
++        long value = Long.parseLong(text);
++        if (value > MAX_STARS) throw new IllegalArgumentException();
++        return value;
++    }
++    public static long parseTon(String text) {
++        if (!text.matches("[0-9]+([.,][0-9]{0,9})?")) throw new IllegalArgumentException();
++        long value = new BigDecimal(text.replace(',', '.')).movePointRight(9).longValueExact();
++        if (value > MAX_TON) throw new IllegalArgumentException();
++        return value;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
+index c5def27..c057069 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
+@@ -520,7 +520,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                         });
+                         return;
+                     }
+-                    if (item.accent && gift.availability_resale > 0) {
++                    if ((org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS ? selectedTab == TAB_ALL : item.accent) && gift.availability_resale > 0) {
+                         final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
+                         if (lastFragment == null) return;
+                         final BaseFragment.BottomSheetParams bottomSheetParams = new BaseFragment.BottomSheetParams();
+@@ -556,7 +556,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                         lastFragment.showAsSheet(fragment, bottomSheetParams);
+                         return;
+                     }
+-                    if (gift.auction) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.auction) {
+                         AuctionJoinSheet.show(context, resourcesProvider, currentAccount, dialogId, gift.id, () -> {
+                             if (closeParentSheet != null) {
+                                 closeParentSheet.run(false);
+@@ -566,11 +566,11 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                         return;
+                     }
+ 
+-                    if (gift.sold_out) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.sold_out) {
+                         StarsIntroActivity.showSoldOutGiftSheet(context, currentAccount, gift, resourcesProvider);
+                         return;
+                     }
+-                    if (gift.limited_per_user && gift.per_user_remains <= 0) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.limited_per_user && gift.per_user_remains <= 0) {
+                         BulletinFactory.of(GiftSheet.this.container, GiftSheet.this.resourcesProvider)
+                             .createSimpleMultiBulletin(gift.getDocument(), AndroidUtilities.replaceTags(formatPluralStringComma("Gift2PerUserLimit", gift.per_user_total)))
+                             .show();
+@@ -590,7 +590,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                         }.show();
+                     };
+ 
+-                    if (gift.locked_until_date > ConnectionsManager.getInstance(currentAccount).getCurrentTime()) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.locked_until_date > ConnectionsManager.getInstance(currentAccount).getCurrentTime()) {
+                         final AlertDialog progressDialog = new AlertDialog(getContext(), AlertDialog.ALERT_TYPE_SPINNER);
+                         progressDialog.showDelayed(500);
+ 
+@@ -1002,7 +1002,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+             tabs.add(getString(R.string.Gift2TabCollectibles));
+ 
+             items.add(Tabs.Factory.asTabs(1, tabs, selectedTab, this::selectTab));
+-            setShowCollectiblesInfo(selectedTab == TAB_COLLECTIBLES && !self && dialogId >= 0);
++            setShowCollectiblesInfo(!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && selectedTab == TAB_COLLECTIBLES && !self && dialogId >= 0);
+ 
+             final ArrayList<TL_stars.StarGift> finalGifts;
+             if (myGifts != null && selectedTab == TAB_MY_GIFTS) {
+@@ -1021,13 +1021,13 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                 if (
+                     selectedTab == TAB_ALL ||
+                     selectedTab == TAB_MY_GIFTS ||
+-                    selectedTab == TAB_COLLECTIBLES && (gift.availability_resale > 0 || gift.require_premium || gift.locked_until_date != 0)
++                    selectedTab == TAB_COLLECTIBLES && (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS || gift.availability_resale > 0 || gift.require_premium || gift.locked_until_date != 0)
+                 ) {
+-                    if (!gift.sold_out && gift.availability_resale > 0 && selectedTab != TAB_COLLECTIBLES) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && !gift.sold_out && gift.availability_resale > 0 && selectedTab != TAB_COLLECTIBLES) {
+                         items.add(GiftCell.Factory.asStarGift(selectedTab, gift, selectedTab == TAB_MY_GIFTS, gift.limited && userSettings != null && userSettings.disallow_limited_stargifts, false, false, false));
+                         giftsCount++;
+                     }
+-                    items.add(GiftCell.Factory.asStarGift(selectedTab, gift, selectedTab == TAB_MY_GIFTS, gift.limited && userSettings != null && userSettings.disallow_limited_stargifts, true, false, false));
++                    items.add(GiftCell.Factory.asStarGift(selectedTab, gift, selectedTab == TAB_MY_GIFTS, gift.limited && userSettings != null && userSettings.disallow_limited_stargifts, !org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS || selectedTab == TAB_ALL && gift.availability_resale > 0, false, false));
+                     giftsCount++;
+                 }
+             }
+@@ -1620,7 +1620,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+             cardBackground.setBackdrop(backdrop);
+             cardBackground.setPattern(findAttribute(gift.attributes, TL_stars.starGiftAttributePattern.class));
+             if (gift.auction && (!gift.sold_out || priotityAuction) && !(allowResaleInGifts && gift.availability_resale > 0)) {
+-                if (gift.sold_out) {
++                if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.sold_out) {
+                     cardBackground.setStrokeColors(new int[] {
+                         Theme.getColor(Theme.key_gift_ribbon_soldout, resourcesProvider),
+                         Theme.getColor(Theme.key_gift_ribbon_soldout, resourcesProvider)
+@@ -1965,7 +1965,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
+                     ribbon.setStrokeColor(0);
+                     ribbon.setBackdrop(null);
+                     ribbon.setText(LocaleController.getString(R.string.Gift2SoldOut), true);
+-                } else if (gift.auction) {
++                } else if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && gift.auction) {
+                     ribbon.setVisibility(View.VISIBLE);
+                     ribbon.setBackdrop(null);
+                     ribbon.setColors(0xFFD79023, 0xFFBF7D16);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
+index 264c0aa..ea9e312 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
+@@ -166,7 +166,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+         this.currentAccount = currentAccount;
+         this.dialogId = dialogId;
+         this.starGift = starGift;
+-        if (starGift != null && starGift.auction) {
++        if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && starGift != null && starGift.auction) {
+             auction = GiftAuctionController.getInstance(currentAccount).subscribeToGiftAuction(starGift.id, this);
+         }
+ 
+@@ -404,7 +404,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+         limitContainer = new FrameLayout(context);
+         limitContainer.setBackground(Theme.createRoundRectDrawable(dp(6), Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider)));
+ 
+-        if (starGift != null && starGift.auction) {
++        if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && starGift != null && starGift.auction) {
+             limitContainerWrapper = new FrameLayout(context);
+             limitContainerWrapper.addView(limitContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 30, 10, 14, 10, 14));
+             limitContainerWrapper.setBackgroundColor(Theme.getColor(Theme.key_dialogBackground, resourcesProvider));
+@@ -650,10 +650,10 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+                 button.setSubText(null, animated);
+             }
+         } else if (starGift != null) {
+-            final long balance = StarsController.getInstance(currentAccount).getBalance().amount;
++            final long balance = org.telegram.messenger.GhostGramWallet.stars(currentAccount);
+             final long price = this.starGift.stars + (upgrade ? this.starGift.upgrade_stars : 0) + (TextUtils.isEmpty(messageEdit.getText()) ? 0 : send_paid_messages_stars);
+             button.setText(StarsIntroActivity.replaceStars(LocaleController.formatPluralStringComma(self ? "Gift2SendSelf" : "Gift2Send", (int) price), cachedStarSpan), animated);
+-            if (StarsController.getInstance(currentAccount).balanceAvailable() && price > balance) {
++            if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && StarsController.getInstance(currentAccount).balanceAvailable() && price > balance) {
+                 button.setSubText(LocaleController.formatPluralStringComma("Gift2SendYourBalance", (int) balance), animated);
+             } else {
+                 button.setSubText(null, animated);
+@@ -957,7 +957,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+             }
+             if (premiumTier != null && premiumTier.isStarsPaymentAvailable()) {
+                 items.add(UItem.asCheck(3, StarsIntroActivity.replaceStarsWithPlain(formatString(R.string.Gift2MessageStars, (int) premiumTier.getStarsPrice()), .78f)).setChecked(useStars));
+-                final long balance = StarsController.getInstance(currentAccount).getBalance().amount;
++                final long balance = org.telegram.messenger.GhostGramWallet.stars(currentAccount);
+                 SpannableStringBuilder boldBalance = new SpannableStringBuilder(LocaleController.formatNumber(balance, ','));
+                 boldBalance.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, boldBalance.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                 items.add(UItem.asShadow(-7, TextUtils.concat(
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 index f13aefd..15b4d6f 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
@@ -373,28 +618,112 @@ index f13aefd..15b4d6f 100644
          pipActivityHandler.onResume();
          if (onResumeStaticCallback != null) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-index 21e137b..82e1a9b 100644
+index 21e137b..8c0c89e 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-@@ -302,6 +302,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -302,6 +302,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
              public void onItemClick(int id) {
                  if (id == -1) {
                      finishFragment();
++                } else if (id == 9002) {
++                    org.telegram.messenger.GhostGramWallet.showEditor(getParentActivity(), currentAccount);
 +                } else if (id == 9001) {
 +                    org.telegram.messenger.GhostGramSync.showSettings(getParentActivity(), currentAccount);
                  } else if (id == 2) {
                      presentSettingFragment(new LogoutActivity());
                  }
-@@ -340,6 +342,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+@@ -340,6 +344,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
          otherItem = menu.addItem(1, R.drawable.ic_ab_other);
          otherItem.setContentDescription(getString(R.string.AccDescrMoreOptions));
          otherItem.addSubItem(2, R.drawable.msg_leave, getString(R.string.LogOut));
++        otherItem.addSubItem(9002, R.drawable.settings_devices, "������");
 +        otherItem.addSubItem(9001, R.drawable.settings_devices, "Синхронизация GhostGram");
  
          search = new ProfileActivity.SearchAdapter(this, context) {
              @Override
+@@ -717,16 +723,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+         if (!getMessagesController().premiumFeaturesBlocked()) {
+             items.add(SettingCell.Factory.of(11, 0xFFB659FF, 0xFF617CFF, R.drawable.settings_premium, getString(R.string.TelegramPremium)));
+         }
+-        if (getMessagesController().starsPurchaseAvailable()) {
++        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS || getMessagesController().starsPurchaseAvailable()) {
+             StarsController c = StarsController.getInstance(currentAccount);
+-            long balance = c.getBalance().amount;
+-            items.add(SettingCell.Factory.of(12, 0xFFEFA612, 0xFFE77512, R.drawable.settings_stars, getString(R.string.TelegramStars), null, c.balanceAvailable() && balance > 0 ? StarsIntroActivity.formatStarsAmount(c.getBalance(), 0.85f, ' ') : ""));
++            long balance = org.telegram.messenger.GhostGramWallet.stars(currentAccount);
++            items.add(SettingCell.Factory.of(12, 0xFFEFA612, 0xFFE77512, R.drawable.settings_stars, getString(R.string.TelegramStars), null, LocaleController.formatNumber(balance, ' ')));
+         }
+         StarsController.getInstance(currentAccount, true).getBalance();
+         if (ApplicationLoader.isBetaBuild() || ApplicationLoader.isStandaloneBuild() || ApplicationLoader.isHuaweiStoreBuild() || (StarsController.getInstance(currentAccount, true).balanceAvailable() && (StarsController.getInstance(currentAccount, true).hasTransactions() || StarsController.getInstance(currentAccount, true).getBalance().positive()))) {
+             final StarsController c = StarsController.getTonInstance(currentAccount);
+             final long balance = c.getBalance().amount;
+-            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.filled_gram_earnings, getString(R.string.GramEarnings), null, c.balanceAvailable() && balance > 0 ? StarsIntroActivity.formatStarsAmount(c.getBalance(), 0.85f, ' ') : ""));
++            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.filled_gram_earnings, getString(R.string.GramEarnings), null, java.math.BigDecimal.valueOf(org.telegram.messenger.GhostGramWallet.ton(currentAccount), 9).stripTrailingZeros().toPlainString()));
+         }
+ 
+         if (!getMessagesController().premiumFeaturesBlocked()) {
+@@ -850,10 +856,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+                 presentSettingFragment(new PremiumPreviewFragment("settings"));
+                 break;
+             case 12:
+-                presentSettingFragment(new StarsIntroActivity());
++                org.telegram.messenger.GhostGramWallet.showEditor(getParentActivity(), currentAccount);
+                 break;
+             case 13:
+-                presentSettingFragment(new TONIntroActivity());
++                org.telegram.messenger.GhostGramWallet.showEditor(getParentActivity(), currentAccount);
+                 break;
+             case 25:
+                 presentSettingFragment(new WalletActivity());
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
+index 73fa8b6..908a56d 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
+@@ -75,10 +75,10 @@ public class BalanceCloud extends LinearLayout implements NotificationCenter.Not
+ 
+     private void updateBalance(boolean animated) {
+         final StarsController c = StarsController.getInstance(currentAccount, currency);
+-        final AmountUtils.Amount balance = c.getBalanceAmount();
++        final AmountUtils.Amount balance = org.telegram.messenger.GhostGramWallet.amount(currentAccount, currency);
+ 
+         if (currency == AmountUtils.Currency.STARS) {
+-            textView1.setText(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatString(R.string.Gift2MessageStarsInfo, LocaleController.formatNumber(balance.asDecimal(), ',')), .60f));
++            textView1.setText(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatString(R.string.Gift2MessageStarsInfo, LocaleController.formatNumber(org.telegram.messenger.GhostGramWallet.stars(currentAccount), ',')), .60f));
+ 
+             textView2.setTextColor(Theme.getColor(Theme.key_undo_cancelColor, resourcesProvider));
+             textView2.setLinkTextColor(Theme.getColor(Theme.key_undo_cancelColor, resourcesProvider));
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
+index 1c2638d..dd31f53 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
+@@ -6811,6 +6811,16 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
+     }
+ 
+     public void doTransfer(long dialogId, Utilities.Callback<TLRPC.TL_error> done) {
++        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
++            TL_stars.TL_starGiftUnique gift = getUniqueGift();
++            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, null, false, 0, (ok, error) -> {
++                if (done == null) return;
++                if (ok) { done.run(null); }
++                else { TLRPC.TL_error failure = new TLRPC.TL_error(); failure.code = 400; failure.text = error; done.run(failure); }
++            });
++            return;
++        }
++
+         final long transfer_stars;
+         final TL_stars.InputSavedStarGift inputStarGift = getInputStarGift();
+         final long fromDialogId;
+@@ -7936,7 +7946,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
+                     final AmountUtils.Amount balance = starsController.balanceAvailable() ?
+                             AmountUtils.Amount.of(starsController.getBalance()) : null;
+ 
+-                    if (balance != null && state.amount.asNano() > balance.asNano()) {
++                    if (!org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && balance != null && state.amount.asNano() > balance.asNano()) {
+                         if (selectedCurrency == AmountUtils.Currency.STARS) {
+                             new StarsIntroActivity.StarsNeededSheet(context, resourcesProvider, state.amount.asDecimal(), StarsIntroActivity.StarsNeededSheet.TYPE_STAR_GIFT_BUY_RESALE, null, null, 0).show();
+                         } else if (selectedCurrency == AmountUtils.Currency.TON){
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
-index ba347e0..d9a6888 100644
+index ba347e0..82edf96 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
 @@ -2617,6 +2617,10 @@ public class StarsController {
@@ -402,20 +731,77 @@ index ba347e0..d9a6888 100644
  
      public void buyStarGift(TL_stars.StarGift gift, boolean anonymous, boolean upgraded, long dialogId, TLRPC.TL_textWithEntities text, Utilities.Callback2<Boolean, String> whenDone) {
 +        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
-+            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, text, whenDone);
++            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, text, false, gift == null ? 0 : gift.stars + (upgraded ? gift.upgrade_stars : 0), whenDone);
 +            return;
 +        }
          final Context context = LaunchActivity.instance != null ? LaunchActivity.instance : ApplicationLoader.applicationContext;
          final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
  
-@@ -2864,6 +2868,10 @@ public class StarsController {
+@@ -2801,6 +2805,23 @@ public class StarsController {
+     }
+ 
+     public void getResellingGiftForm(TL_stars.StarGift gift, long dialogId, TLRPC.TL_textWithEntities message, boolean hideMyName, Utilities.Callback<TLRPC.TL_payments_paymentFormStarGift> whenDone) {
++        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
++            if (gift == null) { whenDone.run(null); return; }
++            long cost = 0;
++            if (gift.resell_amount != null) {
++                for (TL_stars.StarsAmount amount : gift.resell_amount) {
++                    if ((amount instanceof TL_stars.TL_starsTonAmount) == ton) { cost = Math.max(0, amount.amount); break; }
++                }
++            }
++            TLRPC.TL_payments_paymentFormStarGift form = new TLRPC.TL_payments_paymentFormStarGift();
++            form.invoice = new TLRPC.TL_invoice();
++            form.invoice.currency = ton ? "TON" : "XTR";
++            TLRPC.TL_labeledPrice price = new TLRPC.TL_labeledPrice();
++            price.label = "�������"; price.amount = cost; form.invoice.prices.add(price);
++            whenDone.run(form);
++            return;
++        }
++
+         final Context context = LaunchActivity.instance != null ? LaunchActivity.instance : ApplicationLoader.applicationContext;
+         final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
+ 
+@@ -2864,6 +2885,14 @@ public class StarsController {
      }
  
      public void buyResellingGift(TLRPC.TL_payments_paymentFormStarGift form, TL_stars.StarGift gift, long dialogId, TLRPC.TL_textWithEntities message, boolean hideMyName, Utilities.Callback2<Boolean, String> whenDone) {
 +        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
-+            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, message, whenDone);
++            long localCost = 0;
++            if (form != null && form.invoice != null) {
++                for (TLRPC.TL_labeledPrice price : form.invoice.prices) { localCost = Math.addExact(localCost, Math.max(0, price.amount)); }
++            }
++            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, message, ton, localCost, whenDone);
 +            return;
 +        }
          final Context context = LaunchActivity.instance != null ? LaunchActivity.instance : ApplicationLoader.applicationContext;
          final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
  
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
+index 5738e19..4cfc418 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
+@@ -427,7 +427,7 @@ public class StarsIntroActivity extends GradientHeaderActivity implements Notifi
+ 
+         final SpannableStringBuilder sb = new SpannableStringBuilder();
+         sb.append(starBalanceIcon);
+-        sb.append(formatStarsAmount(s.getBalance(), 0.66f, ' '));
++        sb.append(formatStarsAmount(TL_stars.StarsAmount.ofStars(org.telegram.messenger.GhostGramWallet.stars(currentAccount)), 0.66f, ' '));
+         starBalanceTextView.setText(sb);
+ 
+         buyButton.setText(LocaleController.getString(s.getBalance().amount > 0 ? R.string.StarsBuyMore : R.string.StarsBuy), true);
+@@ -878,12 +878,11 @@ public class StarsIntroActivity extends GradientHeaderActivity implements Notifi
+             boolean loading;
+             long balance;
+             if (dialogId == UserConfig.getInstance(currentAccount).getClientUserId()) {
+-                loading = !c.balanceAvailable();
+-                balance = c.getBalance().amount;
++                loading = false;
++                balance = org.telegram.messenger.GhostGramWallet.stars(currentAccount);
+ 
+                 if (tc != null) {
+-                    loading |= !tc.balanceAvailable();
+-                    tonAmount = tc.getBalanceAmount();
++                    tonAmount = org.telegram.messenger.GhostGramWallet.amount(currentAccount, AmountUtils.Currency.TON);
+                 }
+             } else {
+                 TLRPC.TL_payments_starsRevenueStats stats = BotStarsController.getInstance(currentAccount).getStarsRevenueStats(dialogId);

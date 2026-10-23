@@ -1,7 +1,7 @@
 # GhostGram Android private beta sources
 
 Base: official [DrKLO/Telegram](https://github.com/DrKLO/Telegram) at the exact
-commit in `upstream-commit.txt`. `ghostgram.patch` contains the four changed
+commit in `upstream-commit.txt`. `ghostgram.patch` contains the changed
 Java files, including the new relay client. The upstream GPL license applies.
 
 The client uses `https://sync.grastey.com` and protocol v1. It needs the relay
@@ -11,7 +11,7 @@ Configure via Settings -> three dots -> Synchronization GhostGram. The dialog
 also shows the numeric Telegram user ID. Only server-enrolled account pairs
 can exchange synthetic gifts. No Telegram login credentials go to the relay.
 
-Regular gifts and market purchases are intercepted before payment calls and
+Regular gifts, owned collectible transfers and market purchases are intercepted before payment calls and
 inserted as local service cards. The sender/recipient can receive the same event
 on another enrolled client. The foreground poll interval is five seconds;
 background/push delivery is not implemented. Read-only native catalog calls
@@ -27,4 +27,15 @@ pages are not acknowledged until all events on that page have been imported.
 changes the fork package, disables official updater/billing/passkeys and configures
 an arm64 unsigned app. The code-validation workflow compiles Java without producing
 an installable APK. No private signing material is uploaded. Signing and actual
-device tests remain pending; code preparation is not a tested Android release.
+device tests remain pending for the updated wallet/catalog implementation.
+
+The local wallet starts at 100,000 Stars and 100 TON per account, with an editor
+in Settings -> three dots -> Balance. It uses exact decimal parsing, the same
+limits as iOS, clamped spending, and a persistent per-event cost marker to avoid
+double charging on relay retries. Gift and market headers observe the same
+wallet change notifications. It never overrides the real payment balance.
+
+All routes to the market for gifts with resale offers; Collectibles shows the
+ordinary catalog. There is no separate Catalog tab. Regular and collectible
+cards retain comments; gifts also work locally without a configured relay key.
+Local resale quotes avoid payment-form requests and balance-top-up prompts.
