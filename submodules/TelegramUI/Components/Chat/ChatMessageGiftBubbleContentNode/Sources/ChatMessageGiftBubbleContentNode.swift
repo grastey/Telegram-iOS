@@ -2000,9 +2000,21 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
         
         if isPlaying && self.hasAnimationSource {
             var alreadySeen = true
+            let isSyncedIncomingGift = item.message.flags.contains(.Incoming)
+                && item.message.id.namespace == Namespaces.Message.Local
+                && item.message.globallyUniqueId != nil
+            let playSyncedConfetti: Bool
+            if isSyncedIncomingGift, let uniqueId = item.message.globallyUniqueId {
+                playSyncedConfetti = GhostGramSyncStorage.consumeIncomingConfetti(accountId: item.context.account.peerId.toInt64(), messageUniqueId: uniqueId)
+            } else {
+                playSyncedConfetti = false
+            }
             
             if let action = item.message.media.first(where: { $0 is TelegramMediaAction }) as? TelegramMediaAction, case .setChatTheme = action.action {
                 
+            } else if isSyncedIncomingGift {
+                // The relay has no Telegram unread range; use its durable per-event receipt.
+                alreadySeen = true
             } else if item.message.flags.contains(.Incoming) {
                 if let unreadRange = item.controllerInteraction.unreadMessageRange[UnreadMessageRangeKey(peerId: item.message.id.peerId, namespace: item.message.id.namespace)] {
                     if unreadRange.contains(item.message.id.id) {
@@ -2027,7 +2039,7 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                 }
             }
             
-            if !alreadySeen && self.animationNode.isPlaying {
+            if playSyncedConfetti || (!alreadySeen && self.animationNode.isPlaying) {
                 item.controllerInteraction.playNextOutgoingGift = false
                 
                 Queue.mainQueue().after(self.isStarGift ? 0.1 : 1.0) {
