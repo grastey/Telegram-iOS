@@ -1,0 +1,67 @@
+name: Build GhostGram unsigned APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [demo-local-gifts]
+    paths:
+      - .github/workflows/android-apk.yml
+permissions:
+  contents: read
+concurrency:
+  group: ghostgram-android-apk
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            android-fork
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use runner Android SDK
+        run: |
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+      - name: Fetch pinned official Android sources
+        run: |
+          git init android
+          git -C android remote add origin https://github.com/DrKLO/Telegram.git
+          git -C android fetch --depth=1 origin "$(cat android-fork/upstream-commit.txt)"
+          git -C android checkout --detach FETCH_HEAD
+          git -C android submodule update --init --recursive --depth=1 --jobs=4
+          git -C android apply --check "$GITHUB_WORKSPACE/android-fork/ghostgram.patch"
+          git -C android apply "$GITHUB_WORKSPACE/android-fork/ghostgram.patch"
+      - name: Prepare private beta build
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: python3 android-fork/prepare.py android
+      - name: Install Android build dependencies
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Assemble unsigned arm64 APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone --no-daemon --max-workers=2 --stacktrace
+      - name: Prepare APK for local signing
+        run: |
+          mkdir -p output/signing-tools
+          APK=$(find android/TMessagesProj_AppStandalone/build/outputs/apk -name '*.apk' -type f)
+          test "$(printf '%s\n' "$APK" | wc -l)" -eq 1
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -P 16 -f 4 "$APK" output/GhostGram-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 output/GhostGram-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging output/GhostGram-unsigned.apk | head -n 5
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" output/signing-tools/
+          cd output
+          sha256sum GhostGram-unsigned.apk signing-tools/apksigner.jar > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhostGram-Android-unsigned-arm64
+          path: output/
+          retention-days: 14
+          if-no-files-found: error
