@@ -295,7 +295,7 @@ extension PeerInfoScreenNode {
             self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: url, forceExternal: !url.hasPrefix("tg://") && !url.contains("?start="), presentationData: self.context.sharedContext.currentPresentationData.with({$0}), navigationController: controller.navigationController as? NavigationController, dismissInput: {})
         case .stars:
             if DemoWallet.isEnabled, let controller = self.controller {
-                presentDemoWalletEditor(controller: controller, accountId: self.context.account.peerId.toInt64(), completion: { [weak self] in
+                presentDemoWalletEditor(controller: controller, accountId: self.context.account.peerId.toInt64(), syncAccountId: self.context.account.peerId.id._internalGetInt64Value(), completion: { [weak self] in
                     guard let self else { return }
                     self.updatePresentationData(self.presentationData)
                 })
@@ -306,7 +306,7 @@ extension PeerInfoScreenNode {
             }
         case .ton:
             if DemoWallet.isEnabled, let controller = self.controller {
-                presentDemoWalletEditor(controller: controller, accountId: self.context.account.peerId.toInt64(), completion: { [weak self] in
+                presentDemoWalletEditor(controller: controller, accountId: self.context.account.peerId.toInt64(), syncAccountId: self.context.account.peerId.id._internalGetInt64Value(), completion: { [weak self] in
                     guard let self else { return }
                     self.updatePresentationData(self.presentationData)
                 })
