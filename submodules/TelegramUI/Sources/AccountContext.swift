@@ -123,6 +123,7 @@ public final class AccountContextImpl: AccountContext {
     }
     public let account: Account
     public let engine: TelegramEngine
+    private var ghostGramSyncManager: GhostGramSyncManager?
     
     public let fetchManager: FetchManager
     public let prefetchManager: PrefetchManager?
@@ -687,6 +688,7 @@ public final class AccountContextImpl: AccountContext {
                 return try await requestPasscodeAuthentication(context: self, scope: .resource(namespace: request.namespace), lifetime: request.lifetime, biometricReason: self.sharedContext.currentPresentationData.with { $0 }.strings.Wallet_AuthenticationReason, authenticateBiometrics: authenticateBiometrics)
             }
         }
+        self.ghostGramSyncManager = GhostGramSyncManager(account: account, inForeground: sharedContext.applicationBindings.applicationInForeground)
     }
 
     deinit {
