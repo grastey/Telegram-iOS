@@ -4,7 +4,9 @@ import TelegramCore
 
 func presentDemoWalletEditor(controller: UIViewController, accountId: Int64, completion: @escaping () -> Void) {
     let wallet = DemoWallet.load(accountId: accountId)
-    let alert = UIAlertController(title: "Баланс", message: nil, preferredStyle: .alert)
+    let configured = GhostGramSyncStorage.token(accountId: accountId) != nil
+    let pending = GhostGramSyncStorage.pending(accountId: accountId).count
+    let alert = UIAlertController(title: "Баланс", message: "Telegram ID: \(accountId)\nСинхронизация: \(configured ? "включена" : "выключена"). В очереди: \(pending)", preferredStyle: .alert)
     alert.addTextField { field in
         field.placeholder = "Stars"
         field.keyboardType = .numberPad
@@ -14,6 +16,18 @@ func presentDemoWalletEditor(controller: UIViewController, accountId: Int64, com
         field.placeholder = "TON"
         field.keyboardType = .decimalPad
         field.text = wallet.tonText
+    }
+    alert.addTextField { field in
+        field.placeholder = "Новый ключ синхронизации (необязательно)"
+        field.isSecureTextEntry = true
+        field.autocorrectionType = .no
+        field.autocapitalizationType = .none
+    }
+    if configured {
+        alert.addAction(UIAlertAction(title: "Отключить синхронизацию", style: .destructive, handler: { _ in
+            let _ = GhostGramSyncStorage.saveToken(accountId: accountId, token: nil)
+            completion()
+        }))
     }
     alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
     alert.addAction(UIAlertAction(title: "Сохранить", style: .default, handler: { [weak alert, weak controller] _ in
@@ -27,8 +41,24 @@ func presentDemoWalletEditor(controller: UIViewController, accountId: Int64, com
             controller?.present(error, animated: true)
             return
         }
-        DemoWallet(stars: stars, tonNanograms: ton).save(accountId: accountId)
-        completion()
+        let token = fields[2].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let save = {
+            DemoWallet(stars: stars, tonNanograms: ton).save(accountId: accountId)
+            completion()
+        }
+        if token.isEmpty {
+            save()
+        } else {
+            GhostGramSyncManager.verify(token: token, accountId: accountId, completion: { valid in
+                if valid, GhostGramSyncStorage.saveToken(accountId: accountId, token: token) {
+                    save()
+                } else {
+                    let error = UIAlertController(title: "Не удалось подключить", message: "Проверь ключ: он должен быть выдан для этого Telegram-аккаунта. Также проверь подключение к сети.", preferredStyle: .alert)
+                    error.addAction(UIAlertAction(title: "OK", style: .default))
+                    controller?.present(error, animated: true)
+                }
+            })
+        }
     }))
     controller.present(alert, animated: true)
 }
