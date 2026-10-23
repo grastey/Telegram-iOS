@@ -4,6 +4,7 @@ on:
   push:
     branches: [demo-local-gifts]
     paths:
+      - android-fork/**
       - .github/workflows/android-apk.yml
 permissions:
   contents: read
