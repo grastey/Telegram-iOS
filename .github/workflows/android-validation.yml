@@ -1,0 +1,48 @@
+name: Validate GhostGram Android code
+on:
+  workflow_dispatch:
+  push:
+    branches: [demo-local-gifts]
+    paths:
+      - android-fork/**
+      - .github/workflows/android-validation.yml
+permissions:
+  contents: read
+concurrency:
+  group: ghostgram-android-validation
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            android-fork
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Fetch pinned official Android sources
+        run: |
+          git init android
+          git -C android remote add origin https://github.com/DrKLO/Telegram.git
+          git -C android fetch --depth=1 origin "$(cat android-fork/upstream-commit.txt)"
+          git -C android checkout --detach FETCH_HEAD
+          git -C android submodule update --init --recursive --depth=1 --jobs=4
+          git -C android apply --check "$GITHUB_WORKSPACE/android-fork/ghostgram.patch"
+          git -C android apply "$GITHUB_WORKSPACE/android-fork/ghostgram.patch"
+      - name: Prepare private beta build
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: python3 android-fork/prepare.py android
+      - name: Install Android build dependencies
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Compile modified Java sources
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :TMessagesProj:compileAfatReleaseJavaWithJavac --no-daemon --max-workers=2 --stacktrace

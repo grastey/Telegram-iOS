@@ -16,8 +16,17 @@ jobs:
         run: |
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"
           "$RUNNER_TEMP/demo-wallet-tests"
+      - name: Test sync wire protocol
+        run: |
+          mkdir -p "$RUNNER_TEMP/ghostgram-wire"
+          cp demo-tests/sync-main.swift "$RUNNER_TEMP/ghostgram-wire/main.swift"
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift "$RUNNER_TEMP/ghostgram-wire/main.swift" -o "$RUNNER_TEMP/ghostgram-wire/tests"
+          "$RUNNER_TEMP/ghostgram-wire/tests"
+          swiftc -typecheck submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncStorage.swift
       - name: Parse modified Swift files
         run: |
+          swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncManager.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/AccountContext.swift
           swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoGift.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/DemoWalletEditor.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
