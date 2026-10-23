@@ -48,4 +48,4 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew :TMessagesProj:compileAfatReleaseJavaWithJavac --no-daemon --max-workers=2 --stacktrace
+          ./gradlew :TMessagesProj:compileReleaseJavaWithJavac --no-daemon --max-workers=2 --stacktrace
