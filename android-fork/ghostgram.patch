@@ -1,6 +1,6 @@
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
 new file mode 100644
-index 0000000..c0c3e3e
+index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99dbba418f
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
 @@ -0,0 +1,357 @@
@@ -363,7 +363,7 @@ index 0000000..c0c3e3e
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java
 new file mode 100644
-index 0000000..78db357
+index 0000000000000000000000000000000000000000..78db3576a5ff304104a9af7d8ad77343e6599c88
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java
 @@ -0,0 +1,60 @@
@@ -429,7 +429,7 @@ index 0000000..78db357
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java
 new file mode 100644
-index 0000000..c8e070a
+index 0000000000000000000000000000000000000000..c8e070a353de5de49a85010bab1830df94a2a676
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWalletMath.java
 @@ -0,0 +1,31 @@
@@ -465,7 +465,7 @@ index 0000000..c8e070a
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
-index c5def27..c057069 100644
+index c5def272df61283e9cf03308d80768cb9366f2b2..c057069417d31c890e806f752388738c2bc3a445 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/GiftSheet.java
 @@ -520,7 +520,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
@@ -554,7 +554,7 @@ index c5def27..c057069 100644
                      ribbon.setBackdrop(null);
                      ribbon.setColors(0xFFD79023, 0xFFBF7D16);
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
-index 264c0aa..ea9e312 100644
+index 264c0aa1dc2f4b657b7c4273fffc31081bd9f344..006600f425fa523ec5a44830890cfabbcea2d6cb 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Gifts/SendGiftSheet.java
 @@ -166,7 +166,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
@@ -588,7 +588,29 @@ index 264c0aa..ea9e312 100644
                  button.setSubText(LocaleController.formatPluralStringComma("Gift2SendYourBalance", (int) balance), animated);
              } else {
                  button.setSubText(null, animated);
-@@ -957,7 +957,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+@@ -684,7 +684,9 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+     private final ColoredImageSpan[] cachedStarSpan = new ColoredImageSpan[1];
+ 
+     private TLRPC.TL_textWithEntities getMessage() {
+-        final long paidMessagesStarsPrice = MessagesController.getInstance(currentAccount).getSendPaidMessagesStars(dialogId);
++        // Synthetic gift captions do not use Telegram paid-message delivery.
++        final long paidMessagesStarsPrice = org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && starGift != null
++            ? 0 : MessagesController.getInstance(currentAccount).getSendPaidMessagesStars(dialogId);
+         if (paidMessagesStarsPrice > 0) {
+             return null;
+         }
+@@ -925,7 +927,9 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
+     }
+ 
+     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+-        final long paidMessagesStarsPrice = MessagesController.getInstance(currentAccount).getSendPaidMessagesStars(dialogId);
++        // Synthetic gift captions do not use Telegram paid-message delivery.
++        final long paidMessagesStarsPrice = org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS && starGift != null
++            ? 0 : MessagesController.getInstance(currentAccount).getSendPaidMessagesStars(dialogId);
+         items.add(UItem.asCustom(-1, chatView));
+         if (paidMessagesStarsPrice <= 0) {
+             items.add(UItem.asCustom(-2, messageEdit));
+@@ -957,7 +961,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
              }
              if (premiumTier != null && premiumTier.isStarsPaymentAvailable()) {
                  items.add(UItem.asCheck(3, StarsIntroActivity.replaceStarsWithPlain(formatString(R.string.Gift2MessageStars, (int) premiumTier.getStarsPrice()), .78f)).setChecked(useStars));
@@ -598,7 +620,7 @@ index 264c0aa..ea9e312 100644
                  boldBalance.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, boldBalance.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                  items.add(UItem.asShadow(-7, TextUtils.concat(
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-index f13aefd..15b4d6f 100644
+index f13aefd9c986bc210fd37fc29c6b707d3e16f4ba..15b4d6f4bd85b5813be1400f1195027f15ca7079 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 @@ -6731,6 +6731,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
@@ -618,7 +640,7 @@ index f13aefd..15b4d6f 100644
          pipActivityHandler.onResume();
          if (onResumeStaticCallback != null) {
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-index 21e137b..8c0c89e 100644
+index 21e137bae28bfa691b219542920e8abbfe424ffc..8c0c89e77e269489f430d144ff6c8c5a45a73342 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
 @@ -302,6 +302,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
@@ -676,7 +698,7 @@ index 21e137b..8c0c89e 100644
              case 25:
                  presentSettingFragment(new WalletActivity());
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
-index 73fa8b6..908a56d 100644
+index 73fa8b63fc6a7b3dffa8bf88fbcc6aaef1a6c298..908a56de47176c40a62b9679594abbc2c9c30049 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/BalanceCloud.java
 @@ -75,10 +75,10 @@ public class BalanceCloud extends LinearLayout implements NotificationCenter.Not
@@ -693,7 +715,7 @@ index 73fa8b6..908a56d 100644
              textView2.setTextColor(Theme.getColor(Theme.key_undo_cancelColor, resourcesProvider));
              textView2.setLinkTextColor(Theme.getColor(Theme.key_undo_cancelColor, resourcesProvider));
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
-index 1c2638d..dd31f53 100644
+index 1c2638d4701324f8e6f5d2a2976d77586fd37fd7..dd31f53d36b87ad097256483fe10ebcb3cc23f14 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarGiftSheet.java
 @@ -6811,6 +6811,16 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
@@ -723,7 +745,7 @@ index 1c2638d..dd31f53 100644
                              new StarsIntroActivity.StarsNeededSheet(context, resourcesProvider, state.amount.asDecimal(), StarsIntroActivity.StarsNeededSheet.TYPE_STAR_GIFT_BUY_RESALE, null, null, 0).show();
                          } else if (selectedCurrency == AmountUtils.Currency.TON){
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
-index ba347e0..82edf96 100644
+index ba347e0bd03541d591a78e444e0763e659f2fb45..82edf960bdfe378f1b9a6af2da94f0dc71a74fad 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
 @@ -2617,6 +2617,10 @@ public class StarsController {
@@ -777,7 +799,7 @@ index ba347e0..82edf96 100644
          final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
  
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
-index 5738e19..4cfc418 100644
+index 5738e196de4f2f3985de34e49814c85c95906102..4cfc4184758bf39e0989759966db1fec08b59389 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsIntroActivity.java
 @@ -427,7 +427,7 @@ public class StarsIntroActivity extends GradientHeaderActivity implements Notifi
