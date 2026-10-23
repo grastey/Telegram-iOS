@@ -139,7 +139,7 @@ public final class GhostGramSyncManager {
         let id = self.account.peerId.toInt64()
         guard event.belongs(to: String(id)), event.seq > previousSequence,
             let sender = Int64(event.sender), let recipient = Int64(event.recipient),
-            event.comment.count <= 1024, UUID(uuidString: event.client_id) != nil else { completion(false); return }
+            event.comment.unicodeScalars.count <= 1024, UUID(uuidString: event.client_id) != nil else { completion(false); return }
         let gift: Signal<StarGift?, NoError>
         if event.gift.kind == "collectible", let slug = event.gift.slug {
             gift = _internal_getUniqueStarGift(account: self.account, slug: slug)

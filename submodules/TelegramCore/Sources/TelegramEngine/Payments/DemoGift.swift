@@ -18,7 +18,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
         case let .unique(value): reference = GhostGramGiftReference(collectibleSlug: value.slug)
         }
         let submission = GhostGramGiftSubmission(recipient: String(peerId.toInt64()), gift: reference, comment: text)
-        if text.count <= 1024, GhostGramSyncStorage.enqueue(accountId: account.peerId.toInt64(), submission: submission) {
+        if text.unicodeScalars.count <= 1024, GhostGramSyncStorage.enqueue(accountId: account.peerId.toInt64(), submission: submission) {
             uniqueId = GhostGramSyncStorage.messageUniqueId(sender: String(account.peerId.toInt64()), clientId: submission.client_id)
         }
     }
