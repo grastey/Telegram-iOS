@@ -1,0 +1,421 @@
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
+new file mode 100644
+index 0000000..55c2e54
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
+@@ -0,0 +1,348 @@
++package org.telegram.messenger;
++
++import android.app.AlertDialog;
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.security.keystore.KeyGenParameterSpec;
++import android.security.keystore.KeyProperties;
++import android.text.InputType;
++import android.util.Base64;
++import android.widget.EditText;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++import android.widget.Toast;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++import org.telegram.SQLite.SQLiteCursor;
++import org.telegram.tgnet.ConnectionsManager;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.tgnet.tl.TL_stars;
++import org.telegram.ui.Stars.StarsController;
++
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.net.URL;
++import java.nio.ByteBuffer;
++import java.nio.charset.StandardCharsets;
++import java.security.KeyStore;
++import java.security.MessageDigest;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.UUID;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.Executors;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicBoolean;
++import java.util.concurrent.atomic.AtomicReference;
++
++import javax.crypto.Cipher;
++import javax.crypto.KeyGenerator;
++import javax.crypto.SecretKey;
++import javax.crypto.spec.GCMParameterSpec;
++import javax.net.ssl.HttpsURLConnection;
++
++/** Private synthetic-gift relay. Never calls Telegram's payment or transfer APIs. */
++public final class GhostGramSync {
++    public static final boolean SYNTHETIC_GIFTS = true;
++    private static final String BASE = "https://sync.grastey.com";
++    private static final java.util.concurrent.ExecutorService NETWORK = Executors.newSingleThreadExecutor();
++    private static final GhostGramSync[] INSTANCES = new GhostGramSync[UserConfig.MAX_ACCOUNT_COUNT];
++    private static volatile boolean foreground;
++    private static final Runnable TICK = new Runnable() {
++        @Override public void run() {
++            if (!foreground) return;
++            for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
++                if (UserConfig.getInstance(i).isClientActivated()) get(i).schedule();
++            }
++            AndroidUtilities.runOnUIThread(this, 5000);
++        }
++    };
++    private final int account;
++    private final long userId;
++    private final SharedPreferences preferences;
++    private final AtomicBoolean busy = new AtomicBoolean();
++    private volatile String lastStatus = "Не подключено";
++
++    private GhostGramSync(int account) {
++        this.account = account;
++        this.userId = UserConfig.getInstance(account).getClientUserId();
++        this.preferences = ApplicationLoader.applicationContext.getSharedPreferences("ghostgram_sync_" + userId, Context.MODE_PRIVATE);
++    }
++
++    public static synchronized GhostGramSync get(int account) {
++        long user = UserConfig.getInstance(account).getClientUserId();
++        if (INSTANCES[account] == null || INSTANCES[account].userId != user) INSTANCES[account] = new GhostGramSync(account);
++        return INSTANCES[account];
++    }
++
++    public static void setForeground(boolean active) {
++        foreground = active;
++        AndroidUtilities.cancelRunOnUIThread(TICK);
++        if (active) AndroidUtilities.runOnUIThread(TICK);
++    }
++
++    private boolean validAccount() {
++        return userId > 0 && UserConfig.getInstance(account).isClientActivated() && UserConfig.getInstance(account).getClientUserId() == userId;
++    }
++
++    private SecretKey key() throws Exception {
++        String alias = "ghostgram.sync." + userId;
++        KeyStore store = KeyStore.getInstance("AndroidKeyStore");
++        store.load(null);
++        if (store.containsAlias(alias)) return (SecretKey) store.getKey(alias, null);
++        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
++        generator.init(new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
++                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
++        return generator.generateKey();
++    }
++
++    private String token() {
++        try {
++            String encoded = preferences.getString("token", null);
++            if (encoded == null) return null;
++            byte[] bytes = Base64.decode(encoded, Base64.NO_WRAP);
++            if (bytes.length < 29) return null;
++            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
++            cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Arrays.copyOfRange(bytes, 0, 12)));
++            return new String(cipher.doFinal(bytes, 12, bytes.length - 12), StandardCharsets.UTF_8);
++        } catch (Exception ignored) { return null; }
++    }
++
++    private void saveToken(String token) throws Exception {
++        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
++        cipher.init(Cipher.ENCRYPT_MODE, key());
++        byte[] encrypted = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
++        byte[] bytes = ByteBuffer.allocate(12 + encrypted.length).put(cipher.getIV()).put(encrypted).array();
++        if (!preferences.edit().putString("token", Base64.encodeToString(bytes, Base64.NO_WRAP)).commit()) throw new Exception("Storage failed");
++    }
++
++    private synchronized JSONArray outbox() throws Exception { return new JSONArray(preferences.getString("outbox", "[]")); }
++
++    private synchronized boolean enqueue(JSONObject body) throws Exception {
++        JSONArray list = outbox();
++        if (list.length() >= 200) return false;
++        list.put(body);
++        return preferences.edit().putString("outbox", list.toString()).commit();
++    }
++
++    private synchronized void acknowledge(String clientId) throws Exception {
++        JSONArray old = outbox(), next = new JSONArray();
++        for (int i = 0; i < old.length(); i++) if (!clientId.equals(old.getJSONObject(i).getString("client_id"))) next.put(old.get(i));
++        if (!preferences.edit().putString("outbox", next.toString()).commit()) throw new Exception("Storage failed");
++    }
++
++    private JSONObject request(String path, String token, JSONObject body) throws Exception {
++        HttpsURLConnection connection = (HttpsURLConnection) new URL(BASE + path).openConnection();
++        connection.setInstanceFollowRedirects(false);
++        connection.setConnectTimeout(15000);
++        connection.setReadTimeout(20000);
++        connection.setRequestProperty("Authorization", "Bearer " + token);
++        try {
++            if (body != null) {
++                byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
++                connection.setRequestMethod("POST");
++                connection.setDoOutput(true);
++                connection.setRequestProperty("Content-Type", "application/json");
++                connection.setFixedLengthStreamingMode(bytes.length);
++                try (java.io.OutputStream stream = connection.getOutputStream()) { stream.write(bytes); }
++            }
++            int status = connection.getResponseCode();
++            if (status != 200 && status != 201) throw new Exception("Relay HTTP " + status);
++            try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
++                byte[] buffer = new byte[4096];
++                int length;
++                while ((length = input.read(buffer)) != -1) {
++                    if (output.size() + length > 1048576) throw new Exception("Response too large");
++                    output.write(buffer, 0, length);
++                }
++                return new JSONObject(output.toString("UTF-8"));
++            }
++        } finally { connection.disconnect(); }
++    }
++
++    public boolean enabled() { return validAccount() && token() != null; }
++
++    private boolean sameSession(String token) { return validAccount() && token.equals(token()); }
++
++    private void schedule() {
++        if (!validAccount() || !busy.compareAndSet(false, true)) return;
++        NETWORK.execute(() -> {
++            try {
++                String token = token();
++                if (token == null || !sameSession(token) || !foreground) return;
++                JSONObject me = request("/v1/me", token, null);
++                if (!String.valueOf(userId).equals(me.getString("account")) || me.getInt("protocol") != 1) throw new Exception("Account mismatch");
++                JSONArray pending = outbox();
++                boolean outgoingPending = false;
++                if (pending.length() > 0) {
++                    try {
++                    JSONObject next = pending.getJSONObject(0);
++                    JSONObject sent = request("/v1/gifts", token, next);
++                    if (!sameSession(token) || !sent.getBoolean("synthetic") || !String.valueOf(userId).equals(sent.getString("sender"))
++                            || !next.getString("client_id").equals(sent.getString("client_id"))) throw new Exception("Invalid receipt");
++                    acknowledge(next.getString("client_id"));
++                    } catch (Exception ignored) {
++                        // An unavailable recipient must not block incoming gifts.
++                        outgoingPending = true;
++                    }
++                }
++                long cursor = preferences.getLong("cursor", 0);
++                JSONObject page = request("/v1/events?after=" + cursor, token, null);
++                JSONArray events = page.getJSONArray("events");
++                if (events.length() > 100) throw new Exception("Invalid page");
++                long nextCursor = cursor;
++                for (int i = 0; i < events.length(); i++) {
++                    JSONObject event = events.getJSONObject(i);
++                    if (!sameSession(token) || event.getLong("seq") <= nextCursor || !importEvent(event)) throw new Exception("Import pending");
++                    nextCursor = event.getLong("seq");
++                }
++                if (page.getLong("cursor") != nextCursor || !sameSession(token)) throw new Exception("Invalid cursor");
++                if (!preferences.edit().putLong("cursor", nextCursor).commit()) throw new Exception("Storage failed");
++                lastStatus = outgoingPending ? "Подключено — отправка ожидает повтора" : "Подключено";
++            } catch (Exception error) {
++                // Never log bearer tokens, comments or response bodies.
++                lastStatus = "Ожидает синхронизации — проверь сеть, ключ и подключение пары";
++            } finally { busy.set(false); }
++        });
++    }
++
++    public void send(long recipient, TL_stars.StarGift gift, TLRPC.TL_textWithEntities text, Utilities.Callback2<Boolean, String> done) {
++        try {
++            if (gift == null) throw new Exception("Gift unavailable");
++            if (!enabled() || recipient <= 0 || recipient == userId) throw new Exception("Not enabled");
++            String comment = text == null || text.text == null ? "" : text.text;
++            if (comment.codePointCount(0, comment.length()) > 1024) throw new Exception("Caption too long");
++            JSONObject reference = new JSONObject();
++            if (gift instanceof TL_stars.TL_starGiftUnique) reference.put("kind", "collectible").put("slug", gift.slug);
++            else reference.put("kind", "regular").put("id", String.valueOf(gift.id));
++            String clientId = UUID.randomUUID().toString();
++            JSONObject body = new JSONObject().put("client_id", clientId).put("recipient", String.valueOf(recipient)).put("gift", reference).put("comment", comment);
++            if (!enqueue(body)) throw new Exception("Outbox full");
++            JSONObject event = new JSONObject(body.toString()).put("sender", String.valueOf(userId)).put("synthetic", true)
++                    .put("created", ConnectionsManager.getInstance(account).getCurrentTime());
++            NETWORK.execute(() -> {
++                boolean imported = insert(event, gift);
++                AndroidUtilities.runOnUIThread(() -> { if (done != null) done.run(imported, imported ? null : "GHOSTGRAM_LOCAL_IMPORT_FAILED"); schedule(); });
++            });
++        } catch (Exception error) { if (done != null) done.run(false, "GHOSTGRAM_NOT_READY"); }
++    }
++
++    private boolean importEvent(JSONObject event) throws Exception {
++        if (!event.getBoolean("synthetic")) return false;
++        long sender = Long.parseLong(event.getString("sender")), recipient = Long.parseLong(event.getString("recipient"));
++        if (sender != userId && recipient != userId) return false;
++        UUID.fromString(event.getString("client_id"));
++        JSONObject reference = event.getJSONObject("gift");
++        AtomicReference<TL_stars.StarGift> result = new AtomicReference<>();
++        CountDownLatch loaded = new CountDownLatch(1);
++        long regularId = "regular".equals(reference.optString("kind")) ? Long.parseLong(reference.getString("id")) : 0;
++        AndroidUtilities.runOnUIThread(() -> {
++            if (!validAccount()) { loaded.countDown(); return; }
++            if ("regular".equals(reference.optString("kind"))) {
++                Runnable cancel = StarsController.getInstance(account).getStarGift(regularId, gift -> { result.set(gift); loaded.countDown(); });
++                AndroidUtilities.runOnUIThread(cancel, 15000);
++            } else if ("collectible".equals(reference.optString("kind"))) {
++                TL_stars.getUniqueStarGift request = new TL_stars.getUniqueStarGift();
++                request.slug = reference.optString("slug");
++                ConnectionsManager.getInstance(account).sendRequest(request, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
++                    if (validAccount() && response instanceof TL_stars.TL_payments_uniqueStarGift) {
++                        TL_stars.TL_payments_uniqueStarGift unique = (TL_stars.TL_payments_uniqueStarGift) response;
++                        MessagesController.getInstance(account).putUsers(unique.users, false);
++                        MessagesController.getInstance(account).putChats(unique.chats, false);
++                        MessagesStorage.getInstance(account).putUsersAndChats(unique.users, unique.chats, true, true);
++                        result.set(unique.gift);
++                    }
++                    loaded.countDown();
++                }));
++            } else loaded.countDown();
++        });
++        return loaded.await(18, TimeUnit.SECONDS) && result.get() != null && insert(event, result.get());
++    }
++
++    private boolean insert(JSONObject event, TL_stars.StarGift gift) {
++        CountDownLatch finished = new CountDownLatch(1);
++        AtomicBoolean success = new AtomicBoolean();
++        MessagesStorage storage = MessagesStorage.getInstance(account);
++        storage.getStorageQueue().postRunnable(() -> {
++            try {
++                if (!validAccount()) return;
++                long sender = Long.parseLong(event.getString("sender")), recipient = Long.parseLong(event.getString("recipient"));
++                if (sender != userId && recipient != userId) return;
++                long dialog = sender == userId ? recipient : sender;
++                long random = ByteBuffer.wrap(MessageDigest.getInstance("SHA-256").digest(("ghostgram-v1:" + sender + ":" + event.getString("client_id").toLowerCase(java.util.Locale.US)).getBytes(StandardCharsets.UTF_8))).getLong();
++                boolean exists;
++                SQLiteCursor cursor = storage.getDatabase().queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = ? AND uid = ? LIMIT 1", random, dialog);
++                try { exists = cursor.next(); } finally { cursor.dispose(); }
++                if (exists) { success.set(true); return; }
++                TLRPC.TL_messageService message = new TLRPC.TL_messageService();
++                message.local_id = message.id = UserConfig.getInstance(account).getNewMessageId();
++                message.random_id = random;
++                message.dialog_id = dialog;
++                message.out = sender == userId;
++                message.unread = !message.out;
++                message.send_state = 0;
++                message.flags |= 256;
++                message.from_id = new TLRPC.TL_peerUser(); message.from_id.user_id = sender;
++                message.peer_id = new TLRPC.TL_peerUser(); message.peer_id.user_id = recipient;
++                message.date = (int) event.getLong("created");
++                TLRPC.TL_textWithEntities caption = new TLRPC.TL_textWithEntities(); caption.text = event.getString("comment");
++                if (gift instanceof TL_stars.TL_starGiftUnique) {
++                    TLRPC.TL_messageActionStarGiftUnique action = new TLRPC.TL_messageActionStarGiftUnique();
++                    action.gift = gift; action.transferred = true; action.message = caption;
++                    action.from_id = message.from_id; action.flags |= 64;
++                    message.action = action;
++                } else {
++                    TLRPC.TL_messageActionStarGift action = new TLRPC.TL_messageActionStarGift();
++                    action.gift = gift; action.message = caption; action.convert_stars = gift.convert_stars;
++                    action.flags |= 2 | 16; action.to_id = message.peer_id;
++                    message.action = action;
++                }
++                message.message = caption.text;
++                ArrayList<TLRPC.Message> messages = new ArrayList<>(); messages.add(message);
++                storage.putMessages(messages, true, false, false, 0, 0, 0);
++                SQLiteCursor check = storage.getDatabase().queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = ? AND uid = ? LIMIT 1", random, dialog);
++                try { success.set(check.next()); } finally { check.dispose(); }
++                if (success.get()) AndroidUtilities.runOnUIThread(() -> {
++                    if (!validAccount()) return;
++                    UserConfig.getInstance(account).saveConfig(false);
++                    ArrayList<MessageObject> objects = new ArrayList<>(); objects.add(new MessageObject(account, message, false, true));
++                    MessagesController.getInstance(account).updateInterfaceWithMessages(dialog, objects, 0);
++                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
++                });
++            } catch (Exception ignored) { success.set(false); }
++            finally { finished.countDown(); }
++        });
++        try { return finished.await(15, TimeUnit.SECONDS) && success.get(); }
++        catch (InterruptedException error) { Thread.currentThread().interrupt(); return false; }
++    }
++
++    public static void showSettings(Context context, int account) {
++        GhostGramSync sync = get(account);
++        LinearLayout layout = new LinearLayout(context); layout.setOrientation(LinearLayout.VERTICAL);
++        int inset = AndroidUtilities.dp(24); layout.setPadding(inset, inset / 2, inset, 0);
++        TextView status = new TextView(context); status.setTextIsSelectable(true);
++        status.setText("Telegram ID: " + sync.userId + "\n" + sync.lastStatus + "\nsync.grastey.com"); layout.addView(status);
++        EditText input = new EditText(context); input.setSingleLine(true); input.setHint("Ключ подключения");
++        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(input);
++        new AlertDialog.Builder(context).setTitle("Синхронизация GhostGram").setView(layout)
++                .setNegativeButton("Отмена", null).setNeutralButton("Отключить", (dialog, which) -> sync.preferences.edit().remove("token").commit())
++                .setPositiveButton("Подключить", (dialog, which) -> {
++                    String token = input.getText().toString().trim();
++                    NETWORK.execute(() -> {
++                        boolean valid = false;
++                        try {
++                            JSONObject identity = sync.request("/v1/me", token, null);
++                            if (sync.validAccount() && String.valueOf(sync.userId).equals(identity.getString("account")) && identity.getInt("protocol") == 1) {
++                                sync.saveToken(token); valid = true;
++                            }
++                        } catch (Exception ignored) { }
++                        boolean connected = valid;
++                        AndroidUtilities.runOnUIThread(() -> {
++                            Toast.makeText(context, connected ? "Подключено" : "Проверь ключ для этого аккаунта и сеть", Toast.LENGTH_LONG).show();
++                            if (connected) sync.schedule();
++                        });
++                    });
++                }).show();
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+index f13aefd..15b4d6f 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+@@ -6731,6 +6731,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+ 
+     @Override
+     protected void onPause() {
++        org.telegram.messenger.GhostGramSync.setForeground(false);
+         super.onPause();
+         isResumed = false;
+         pipActivityHandler.onPause();
+@@ -6970,6 +6971,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+     @Override
+     protected void onResume() {
+         super.onResume();
++        org.telegram.messenger.GhostGramSync.setForeground(true);
+         isResumed = true;
+         pipActivityHandler.onResume();
+         if (onResumeStaticCallback != null) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+index 21e137b..82e1a9b 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+@@ -302,6 +302,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+             public void onItemClick(int id) {
+                 if (id == -1) {
+                     finishFragment();
++                } else if (id == 9001) {
++                    org.telegram.messenger.GhostGramSync.showSettings(getParentActivity(), currentAccount);
+                 } else if (id == 2) {
+                     presentSettingFragment(new LogoutActivity());
+                 }
+@@ -340,6 +342,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
+         otherItem = menu.addItem(1, R.drawable.ic_ab_other);
+         otherItem.setContentDescription(getString(R.string.AccDescrMoreOptions));
+         otherItem.addSubItem(2, R.drawable.msg_leave, getString(R.string.LogOut));
++        otherItem.addSubItem(9001, R.drawable.settings_devices, "Синхронизация GhostGram");
+ 
+         search = new ProfileActivity.SearchAdapter(this, context) {
+             @Override
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
+index ba347e0..d9a6888 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Stars/StarsController.java
+@@ -2617,6 +2617,10 @@ public class StarsController {
+     }
+ 
+     public void buyStarGift(TL_stars.StarGift gift, boolean anonymous, boolean upgraded, long dialogId, TLRPC.TL_textWithEntities text, Utilities.Callback2<Boolean, String> whenDone) {
++        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
++            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, text, whenDone);
++            return;
++        }
+         final Context context = LaunchActivity.instance != null ? LaunchActivity.instance : ApplicationLoader.applicationContext;
+         final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
+ 
+@@ -2864,6 +2868,10 @@ public class StarsController {
+     }
+ 
+     public void buyResellingGift(TLRPC.TL_payments_paymentFormStarGift form, TL_stars.StarGift gift, long dialogId, TLRPC.TL_textWithEntities message, boolean hideMyName, Utilities.Callback2<Boolean, String> whenDone) {
++        if (org.telegram.messenger.GhostGramSync.SYNTHETIC_GIFTS) {
++            org.telegram.messenger.GhostGramSync.get(currentAccount).send(dialogId, gift, message, whenDone);
++            return;
++        }
+         final Context context = LaunchActivity.instance != null ? LaunchActivity.instance : ApplicationLoader.applicationContext;
+         final Theme.ResourcesProvider resourcesProvider = getResourceProvider();
+ 
