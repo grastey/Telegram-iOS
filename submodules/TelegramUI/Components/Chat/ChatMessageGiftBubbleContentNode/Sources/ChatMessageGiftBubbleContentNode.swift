@@ -29,7 +29,10 @@ import PeerInfoCoverComponent
 import GiftItemComponent
 import TextSelectionNode
 
-private func localGiftCaption(_ caption: String?, isDemo: Bool) -> String? {
+private func localGiftCaption(_ caption: String?, localMessageText: String? = nil, isDemo: Bool) -> String? {
+    // Earlier relay imports retained plain text on the message, but lost action text.
+    let fallback = localMessageText == "���� � ������� �� ���������" ? nil : localMessageText
+    let caption = caption ?? fallback
     guard isDemo, let caption else { return caption }
     let legacyPrefix = "ДЕМО • Только на этом устройстве"
     if caption == legacyPrefix { return nil }
@@ -713,7 +716,7 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                 hasServiceMessage = false
                             }
                         case let .starGift(gift, convertStars, rawGiftText, giftEntities, _, savedToProfile, converted, upgraded, canUpgrade, upgradeStars, isRefunded, isPrepaidUpgrade, _, channelPeerId, senderPeerId, _, _, _, _, _, toPeerId, _):
-                            let giftText = localGiftCaption(rawGiftText, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
+                            let giftText = localGiftCaption(rawGiftText, localMessageText: item.message.id.namespace == Namespaces.Message.Local ? item.message.text : nil, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
                             var incoming = incoming
                             var convertStars = convertStars
                             let isLocalOutgoingGift = DemoWallet.isEnabled && item.message.id.namespace == Namespaces.Message.Local && item.message.author?.id == item.context.account.peerId
@@ -850,7 +853,7 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                 }
                             }
                         case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, senderId, _, _, _, _, _, _, fromOffer, _, isCrafted, rawGiftText, giftEntities, _):
-                            let giftText = localGiftCaption(rawGiftText, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
+                            let giftText = localGiftCaption(rawGiftText, localMessageText: item.message.id.namespace == Namespaces.Message.Local ? item.message.text : nil, isDemo: item.message.id.namespace == Namespaces.Message.Local && item.message.text == "ДЕМО • Подарок не отправлен")
                             if case let .unique(uniqueGiftValue) = gift {
                                 isStarGift = true
                                 giftMessageText = giftText
