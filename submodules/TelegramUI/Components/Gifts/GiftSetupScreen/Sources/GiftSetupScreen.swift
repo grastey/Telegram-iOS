@@ -1347,7 +1347,7 @@ private final class GiftSetupScreenComponent: Component {
             if let accountPeer = self.peerMap[component.context.account.peerId] {
                 var inputPanelSize = CGSize()
                 let inputPanelInset: CGFloat = 16.0
-                if self.sendPaidMessageStars == nil {
+                if self.sendPaidMessageStars == nil || DemoWallet.isEnabled {
                     let nextInputMode: MessageInputPanelComponent.InputMode
                     switch self.currentInputMode {
                     case .text:
