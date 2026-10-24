@@ -26,13 +26,15 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
     return account.postbox.transaction { transaction -> Void in
         if let finalUniqueId, transaction.messageIdForGloballyUniqueMessageId(peerId: peerId, id: finalUniqueId) != nil { return }
         let caption: String? = text.isEmpty ? nil : text
+        // Postbox persists gift text only together with its entity array.
+        let captionEntities: [MessageTextEntity]? = caption == nil ? nil : (entities ?? [])
         let actionType: TelegramMediaActionType
         switch gift {
         case let .generic(genericGift):
             actionType = .starGift(
                 gift: gift, convertStars: genericGift.convertStars,
                 text: caption,
-                entities: entities, nameHidden: false, savedToProfile: false, converted: false,
+                entities: captionEntities, nameHidden: false, savedToProfile: false, converted: false,
                 upgraded: false, canUpgrade: false, upgradeStars: nil, isRefunded: false,
                 isPrepaidUpgrade: false, upgradeMessageId: nil, peerId: nil,
                 senderId: incoming ? authorId : nil, savedId: nil, prepaidUpgradeHash: nil,
@@ -46,7 +48,7 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
                 isPrepaidUpgrade: false, peerId: nil, senderId: authorId,
                 savedId: nil, resaleAmount: nil, canTransferDate: nil, canResaleDate: nil,
                 dropOriginalDetailsStars: nil, assigned: false, fromOffer: false,
-                canCraftAt: nil, isCrafted: false, text: caption, entities: entities, nameHidden: false
+                canCraftAt: nil, isCrafted: false, text: caption, entities: captionEntities, nameHidden: false
             )
         }
         let action = TelegramMediaAction(action: actionType)
