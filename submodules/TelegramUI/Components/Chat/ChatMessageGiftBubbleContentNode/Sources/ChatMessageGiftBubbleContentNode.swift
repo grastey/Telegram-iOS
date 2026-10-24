@@ -31,7 +31,7 @@ import TextSelectionNode
 
 private func localGiftCaption(_ caption: String?, localMessageText: String? = nil, isDemo: Bool) -> String? {
     // Earlier relay imports retained plain text on the message, but lost action text.
-    let fallback = localMessageText == "���� � ������� �� ���������" ? nil : localMessageText
+    let fallback = localMessageText == "ДЕМО • Подарок не отправлен" ? nil : localMessageText
     let caption = caption ?? fallback
     guard isDemo, let caption else { return caption }
     let legacyPrefix = "ДЕМО • Только на этом устройстве"
