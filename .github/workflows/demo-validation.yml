@@ -30,6 +30,8 @@ jobs:
           cp demo-tests/peer-id-main.swift "$RUNNER_TEMP/ghostgram-peer-id/main.swift"
           swiftc "$RUNNER_TEMP/ghostgram-peer-id/PeerId.swift" "$RUNNER_TEMP/ghostgram-peer-id/main.swift" -o "$RUNNER_TEMP/ghostgram-peer-id/tests"
           "$RUNNER_TEMP/ghostgram-peer-id/tests"
+      - name: Test gift caption persistence and legacy rendering
+        run: python3 demo-tests/gift-caption-test.py
       - name: Parse modified Swift files
         run: |
           swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncManager.swift
