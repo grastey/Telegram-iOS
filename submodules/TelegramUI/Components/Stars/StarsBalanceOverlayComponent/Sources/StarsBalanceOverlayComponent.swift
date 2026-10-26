@@ -82,7 +82,7 @@ public final class StarsBalanceOverlayComponent: Component {
         
         private var didTap = false
         @objc private func tapped() {
-            if let component = self.component, !self.didTap {
+            if let component = self.component, !DemoWallet.isEnabled, !self.didTap {
                 self.didTap = true
                 component.action()
             }
@@ -215,7 +215,7 @@ public final class StarsBalanceOverlayComponent: Component {
             
             let size: CGSize
             
-            let hasAction = component.currency == .stars && component.peerId == component.context.account.peerId
+            let hasAction = !DemoWallet.isEnabled && component.currency == .stars && component.peerId == component.context.account.peerId
             if hasAction {
                 if self.cachedChevronImage == nil || self.cachedChevronImage?.1 !== component.theme {
                     self.cachedChevronImage = (generateTintedImage(image: UIImage(bundleImageName: "Item List/InlineTextRightArrow"), color: component.theme.rootController.navigationBar.accentTextColor)!, component.theme)
