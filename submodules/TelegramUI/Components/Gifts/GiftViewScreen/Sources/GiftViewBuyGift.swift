@@ -25,77 +25,6 @@ public func buyStarGiftImpl(
     completion: @escaping () -> Void
 ) {
     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-    if DemoWallet.isEnabled {
-        if !skipConfirmation, message == nil {
-            let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: recipientPeerId))
-            |> deliverOnMainQueue).start(next: { peer in
-                guard let peer, let controller = getController() else {
-                    return
-                }
-                let messageScreen = GiftMessageScreen(
-                    context: context,
-                    peer: peer,
-                    gift: uniqueGift,
-                    dismissOnCompletion: true,
-                    completion: { result in
-                        buyStarGiftImpl(
-                            context: context,
-                            recipientPeerId: recipientPeerId,
-                            uniqueGift: uniqueGift,
-                            showAttributes: showAttributes,
-                            acceptedPrice: acceptedPrice,
-                            skipConfirmation: true,
-                            message: result,
-                            starsTopUpOptions: starsTopUpOptions,
-                            buyGift: buyGift,
-                            getController: getController,
-                            updateProgress: updateProgress,
-                            updateIsBalanceVisible: updateIsBalanceVisible,
-                            completion: completion
-                        )
-                    }
-                )
-                controller.push(messageScreen)
-            })
-            return
-        }
-        guard let controller = getController(), recipientPeerId.namespace == Namespaces.Peer.CloudUser else {
-            return
-        }
-        let price = acceptedPrice ?? uniqueGift.resellAmounts?.first
-        let accountId = context.account.peerId.toInt64()
-        let wallet = DemoWallet.load(accountId: accountId)
-        let cost = max(0, price?.amount.value ?? 0)
-        let usesTon = price?.currency == .ton
-        let remaining = usesTon
-            ? DemoWallet(stars: wallet.stars, tonNanograms: max(0, wallet.tonNanograms - cost))
-            : DemoWallet(stars: max(0, wallet.stars - cost), tonNanograms: wallet.tonNanograms)
-        let priceText = usesTon
-            ? "\(DemoWallet(stars: 0, tonNanograms: cost).tonText) TON"
-            : "\(cost) Stars"
-        let beforeText = usesTon ? "\(wallet.tonText) TON" : "\(wallet.stars) Stars"
-        let afterText = usesTon ? "\(remaining.tonText) TON" : "\(remaining.stars) Stars"
-        let proceed = {
-            updateProgress(true)
-            let _ = (addLocalDemoGift(account: context.account, peerId: recipientPeerId, gift: .unique(uniqueGift), text: message?.text ?? "", entities: message?.entities)
-            |> deliverOnMainQueue).startStandalone(completed: {
-                // Only the local presentation balance changes; no payment request is made.
-                let current = DemoWallet.load(accountId: accountId)
-                let updated = usesTon
-                    ? DemoWallet(stars: current.stars, tonNanograms: max(0, current.tonNanograms - cost))
-                    : DemoWallet(stars: max(0, current.stars - cost), tonNanograms: current.tonNanograms)
-                updated.save(accountId: accountId)
-                updateProgress(false)
-                completion()
-            })
-        }
-        controller.present(textAlertController(context: context, title: "Отправить подарок", text: "Цена: \(priceText)\nБаланс: \(beforeText) → \(afterText)", actions: [
-            TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
-            TextAlertAction(type: .defaultAction, title: "Подарить", action: proceed)
-        ]), in: .window(.root))
-        return
-    }
-                    
     let action: (CurrencyAmount.Currency, GiftMessageScreen.Result, @escaping () -> Void) -> Void = { currency, message, beforeCompletion in
         guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
             guard let controller = getController() else {
@@ -122,6 +51,21 @@ public func buyStarGiftImpl(
         }
         
         let proceed: () -> Void = {
+            if DemoWallet.isEnabled {
+                guard recipientPeerId.namespace == Namespaces.Peer.CloudUser else { return }
+                updateProgress(true)
+                let _ = (addLocalDemoGift(account: context.account, peerId: recipientPeerId, gift: .unique(uniqueGift), text: message.text ?? "", entities: message.entities)
+                |> deliverOnMainQueue).startStandalone(completed: {
+                    let accountId = context.account.peerId.toInt64()
+                    let wallet = DemoWallet.load(accountId: accountId)
+                    wallet.spending(stars: finalPrice.currency == .stars ? finalPrice.amount.value : 0,
+                                    tonNanograms: finalPrice.currency == .ton ? finalPrice.amount.value : 0).save(accountId: accountId)
+                    beforeCompletion()
+                    updateProgress(false)
+                    completion()
+                })
+                return
+            }
             updateProgress(true)
             
             let buyGiftImpl: ((String, EnginePeer.Id, CurrencyAmount?, Bool, String?, [MessageTextEntity]?) -> Signal<Never, BuyStarGiftError>)
@@ -219,7 +163,7 @@ public func buyStarGiftImpl(
             })
         }
         
-        if finalPrice.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < finalPrice.amount {
+        if !DemoWallet.isEnabled, finalPrice.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < finalPrice.amount {
             let _ = (starsTopUpOptions
              |> filter { $0 != nil }
              |> take(1)
@@ -274,7 +218,7 @@ public func buyStarGiftImpl(
                 )
                 controller.push(purchaseController)
             })
-        } else if finalPrice.currency == .ton, let tonState = context.tonContext?.currentState, tonState.balance < finalPrice.amount {
+        } else if !DemoWallet.isEnabled, finalPrice.currency == .ton, let tonState = context.tonContext?.currentState, tonState.balance < finalPrice.amount {
             guard let controller = getController() else {
                 return
             }
@@ -307,6 +251,7 @@ public func buyStarGiftImpl(
             }
             let presentConfirmation: (GiftMessageScreen.Result, GiftMessageScreen?) -> Void = { message, messageController in
                 var dismissImpl: (() -> Void)?
+                var committed = false
                 let alertController = giftPurchaseAlertController(
                     context: context,
                     gift: uniqueGift,
@@ -316,6 +261,8 @@ public func buyStarGiftImpl(
                     autoDismissOnCommit: false,
                     navigationController: controller.navigationController as? NavigationController,
                     commit: { currency in
+                        guard !committed else { return }
+                        committed = true
                         dismissImpl?()
                         if let messageController {
                             messageController.dismiss(completion: {
