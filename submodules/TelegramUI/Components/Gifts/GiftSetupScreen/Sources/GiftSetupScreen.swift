@@ -405,10 +405,15 @@ private final class GiftSetupScreenComponent: Component {
                 caption = value
             }
             let entities = generateChatInputTextEntities(caption)
+            let upgradeCost = self.includeUpgrade ? (gift.upgradeStars ?? 0) : 0
             self.inProgress = true
             self.state?.updated()
             let _ = (addLocalDemoGift(account: component.context.account, peerId: component.peerId, gift: .generic(gift), text: caption.string, entities: entities)
             |> deliverOnMainQueue).startStandalone(completed: { [weak self, weak navigationController] in
+                let accountId = component.context.account.peerId.toInt64()
+                let wallet = DemoWallet.load(accountId: accountId)
+                // Each term is clamped separately so their sum cannot overflow.
+                wallet.spending(stars: gift.price).spending(stars: upgradeCost).save(accountId: accountId)
                 self?.inProgress = false
                 guard let navigationController else { return }
                 var controllers = navigationController.viewControllers.filter {
@@ -1997,7 +2002,6 @@ private final class GiftSetupScreenComponent: Component {
             }
             
             if DemoWallet.isEnabled, case .starGift = component.subject {
-                buttonString = "Подарить"
                 buttonIsEnabled = true
             }
 
