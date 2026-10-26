@@ -21,6 +21,14 @@ public struct DemoWallet {
         )
     }
 
+    /// Clamp simulated spending without borrowing across currencies or overflowing.
+    public func spending(stars: Int64 = 0, tonNanograms: Int64 = 0) -> DemoWallet {
+        return DemoWallet(
+            stars: self.stars - min(self.stars, max(0, stars)),
+            tonNanograms: self.tonNanograms - min(self.tonNanograms, max(0, tonNanograms))
+        )
+    }
+
     public func save(accountId: Int64) {
         let prefix = "demoWallet.\(accountId)."
         UserDefaults.standard.set(NSNumber(value: self.stars), forKey: prefix + "stars")
