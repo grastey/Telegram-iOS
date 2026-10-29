@@ -274,8 +274,8 @@ private final class VideoStickerFrameSourceCache {
 
 private let useCache = true
 
-public func makeVideoStickerDirectFrameSource(queue: Queue, path: String, hintVP9: Bool, width: Int, height: Int, cachePathPrefix: String?, unpremultiplyAlpha: Bool) -> AnimatedStickerFrameSource? {
-    return VideoStickerDirectFrameSource(queue: queue, path: path, isVP9: hintVP9, width: width, height: height, cachePathPrefix: cachePathPrefix, unpremultiplyAlpha: unpremultiplyAlpha)
+public func makeVideoStickerDirectFrameSource(queue: Queue, path: String, hintVP9: Bool, width: Int, height: Int, cachePathPrefix: String?, unpremultiplyAlpha: Bool, maximumFrameRate: Int = 30) -> AnimatedStickerFrameSource? {
+    return VideoStickerDirectFrameSource(queue: queue, path: path, isVP9: hintVP9, width: width, height: height, cachePathPrefix: cachePathPrefix, unpremultiplyAlpha: unpremultiplyAlpha, maximumFrameRate: maximumFrameRate)
 }
 
 public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
@@ -301,7 +301,7 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
         }
     }
     
-    public init?(queue: Queue, path: String, isVP9: Bool = true, width: Int, height: Int, cachePathPrefix: String?, unpremultiplyAlpha: Bool = true) {
+    public init?(queue: Queue, path: String, isVP9: Bool = true, width: Int, height: Int, cachePathPrefix: String?, unpremultiplyAlpha: Bool = true, maximumFrameRate: Int = 30) {
         self.queue = queue
         self.path = path
         self.width = width
@@ -340,7 +340,7 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
             )
             if let source {
                 self.source = source
-                self.frameRate = min(30, source.frameRate())
+                self.frameRate = min(max(1, min(60, maximumFrameRate)), source.frameRate())
                 self.duration = source.duration().seconds
             } else {
                 self.source = nil

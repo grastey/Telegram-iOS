@@ -117,7 +117,7 @@ public final class DirectAnimatedStickerNode: ASDisplayNode, AnimatedStickerNode
             }
             
             if source.isVideo {
-                if let videoSource = makeVideoStickerDirectFrameSource(queue: DirectAnimatedStickerNode.sharedQueue, path: path, hintVP9: true, width: width, height: height, cachePathPrefix: nil, unpremultiplyAlpha: false) {
+                if let videoSource = makeVideoStickerDirectFrameSource(queue: DirectAnimatedStickerNode.sharedQueue, path: path, hintVP9: true, width: width, height: height, cachePathPrefix: nil, unpremultiplyAlpha: false, maximumFrameRate: source.maximumFrameRate) {
                     strongSelf.setupPlayback(videoSource: videoSource)
                 }
             } else {
