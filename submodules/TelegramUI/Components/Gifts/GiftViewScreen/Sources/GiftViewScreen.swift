@@ -3194,6 +3194,12 @@ private final class GiftViewSheetContent: CombinedComponent {
             
             let state = context.state
             let subject = state.subject
+            let isFreddy: Bool
+            if let arguments = subject.arguments, case let .generic(gift) = arguments.gift {
+                isFreddy = FreddyGift.isFile(gift.file)
+            } else {
+                isFreddy = false
+            }
 
             let canCopyGiftMessageText: Bool
             if case let .message(message) = subject {
@@ -5376,7 +5382,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                         valueAttributedString.addAttribute(.baselineOffset, value: 1.0, range: range)
                     }
                     
-                    var canConvert = true
+                    var canConvert = !isFreddy
                     if let reference = subject.arguments?.reference, case let .peer(peerId, _) = reference {
                         if let peer = state.peerMap[peerId], case let .channel(channel) = peer, !channel.flags.contains(.isCreator) {
                             canConvert = false
@@ -5527,7 +5533,7 @@ private final class GiftViewSheetContent: CombinedComponent {
             if let controller = controller() as? GiftViewScreen, controller.openChatTheme != nil {
                 isChatTheme = true
             }
-            if ((incoming && !converted && !upgraded) || exported || selling || isChatTheme) && (!showUpgradePreview && !showWearPreview && !isDismantled) {
+            if !isFreddy && ((incoming && !converted && !upgraded) || exported || selling || isChatTheme) && (!showUpgradePreview && !showWearPreview && !isDismantled) {
                 let textFont = Font.regular(13.0)
                 let textColor = theme.list.itemSecondaryTextColor
                 let linkColor = theme.actionSheet.controlAccentColor
@@ -6013,7 +6019,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                             state?.requestUpgradePreview()
                         }
                 )
-            } else if incoming && !converted && !savedToProfile && !isDismantled {
+            } else if !isFreddy && incoming && !converted && !savedToProfile && !isDismantled {
                 let buttonTitle = isChannelGift ? strings.Gift_View_Display_Channel : strings.Gift_View_Display
                 buttonComponent = ButtonComponent(
                         background: buttonBackground,
@@ -6864,8 +6870,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
                 if let action = message.media.first(where: { $0 is TelegramMediaAction }) as? TelegramMediaAction {
                     switch action.action {
                     case let .starGift(gift, convertStars, text, entities, nameHidden, savedToProfile, converted, upgraded, canUpgrade, upgradeStars, isRefunded, _, upgradeMessageId, peerId, senderId, savedId, prepaidUpgradeHash, giftMessageId, upgradeSeparate, _, toPeerId, number):
-                        var reference: StarGiftReference
-                        if let peerId, let giftMessageId {
+                        var reference: StarGiftReference?
+                        if case let .generic(genericGift) = gift, FreddyGift.isFile(genericGift.file) {
+                            reference = nil
+                        } else if let peerId, let giftMessageId {
                             reference = .message(messageId: EngineMessage.Id(peerId: peerId, namespace: Namespaces.Message.Cloud, id: giftMessageId))
                         } else if let peerId, let savedId {
                             reference = .peer(peerId: peerId, id: savedId)

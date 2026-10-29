@@ -67,6 +67,9 @@ jobs:
           cp demo-tests/freddy-main.swift "$RUNNER_TEMP/freddy/main.swift"
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyCommand.swift "$RUNNER_TEMP/freddy/main.swift" -o "$RUNNER_TEMP/freddy/tests"
           "$RUNNER_TEMP/freddy/tests"
+          swiftc -frontend -parse submodules/TelegramUI/Sources/ChatHistoryEntriesForView.swift
+          swiftc -frontend -parse submodules/TelegramStringFormatting/Sources/ServiceMessageStrings.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
           swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyGift.swift
           swiftc -frontend -parse submodules/TelegramUI/Sources/Chat/ChatControllerFreddy.swift
           swiftc -frontend -parse submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
