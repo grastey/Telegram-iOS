@@ -1224,6 +1224,9 @@ public func universalServiceMessageString(presentationData: (PresentationTheme, 
                             attributedString = NSAttributedString(string: strings.Notification_Gift, font: titleFont, textColor: primaryTextColor)
                         }
                     }
+                } else if case let .generic(gift) = gift, FreddyGift.isFile(gift.file) {
+                    let header = message.author?.id == accountPeerId ? "Вы отправили подарок" : "Подарок от \(compactAuthorName)"
+                    attributedString = NSAttributedString(string: header, font: titleFont, textColor: primaryTextColor)
                 } else if case let .generic(gift) = gift {
                     var finalPrice = gift.price
                     if let upgradeStars, !upgradeSeparate {
@@ -2104,3 +2107,4 @@ public func incomingGramTransferPreview(message: EngineMessage, accountPeerId: E
     }
     return nil
 }
+
