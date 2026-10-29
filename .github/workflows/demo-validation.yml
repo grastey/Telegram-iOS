@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - demo-local-gifts
+      - freddy-chat-animation
 permissions:
   contents: read
 jobs:
