@@ -107,6 +107,8 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
     private var appliedIsExpanded: Bool = false
     
     private var isStarGift = false
+    private var isFreddy = false
+    private var freddyEntrancePending = false
     private var isGiftMessagePlaceholder = false
     
     private var currentProgressDisposable: Disposable?
@@ -352,9 +354,28 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
         guard let item = self.item else {
             return
         }
+        if self.isFreddy {
+            self.playFreddyCelebration()
+            return
+        }
         let _ = item.controllerInteraction.openMessage(item.message, OpenMessageParams(mode: .default, progress: self.makeProgress()))
     }
     
+    private func playFreddyCelebration() {
+        guard let item = self.item, self.visibilityStatus == true else { return }
+        self.animationNode.playOnce()
+        self.animateFreddyEntrance()
+        if !UIAccessibility.isReduceMotionEnabled {
+            item.controllerInteraction.animateDiceSuccess(false, true)
+        }
+    }
+
+    private func animateFreddyEntrance() {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        self.animationNode.layer.animateSpring(from: 0.65 as NSNumber, to: 1.0 as NSNumber, keyPath: "transform.scale", duration: 0.55)
+        self.animationNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.18)
+    }
+
     private func expandPressed() {
         self.isExpanded = !self.isExpanded
         guard let item = self.item else{
@@ -832,6 +853,10 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                     }
                                 }
                                 animationFile = gift.file
+                                if FreddyGift.isFile(gift.file) {
+                                    title = "Freddy • Halloween"
+                                    if giftText?.isEmpty != false { text = "🎃" }
+                                }
                                 if let availability = gift.availability {
                                     let availabilityString: String
                                     if availability.total > 9999 {
@@ -850,6 +875,9 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                     } else {
                                         buttonTitle = item.presentationData.strings.Notification_StarGift_View
                                     }
+                                }
+                                if FreddyGift.isFile(gift.file) {
+                                    buttonTitle = "Повторить"
                                 }
                             }
                         case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, senderId, _, _, _, _, _, _, fromOffer, _, isCrafted, rawGiftText, giftEntities, _):
@@ -1264,6 +1292,12 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                             let mediaBackgroundFrame = imageFrame.insetBy(dx: -2.0, dy: -2.0)
                             
                             let displayedAnimationFile = animationFile ?? stickerPackAnimation?.file
+                            strongSelf.isFreddy = displayedAnimationFile.map(FreddyGift.isFile) ?? false
+                            if strongSelf.currentAnimationSourceId == nil && strongSelf.isFreddy {
+                                strongSelf.freddyEntrancePending = item.controllerInteraction.playNextOutgoingGift
+                                    && !item.controllerInteraction.seenOneTimeAnimatedMedia.contains(item.message.id)
+                            }
+
                             let isStickerPackAnimation = animationFile == nil && stickerPackAnimation != nil
                             let animationSourceId: String?
                             if let displayedAnimationFile {
@@ -1295,6 +1329,19 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                             if strongSelf.item == nil && !isStoryEntity && uniqueGift == nil {
                                 strongSelf.animationNode.started = { [weak self] in
                                     if let strongSelf = self {
+                                        if strongSelf.freddyEntrancePending {
+                                            strongSelf.freddyEntrancePending = false
+                                            strongSelf.animateFreddyEntrance()
+                                            if let item = strongSelf.item {
+                                                item.controllerInteraction.playNextOutgoingGift = false
+                                                if !UIAccessibility.isReduceMotionEnabled {
+                                                    Queue.mainQueue().after(0.1) { [weak self] in
+                                                        guard let self, self.visibilityStatus == true else { return }
+                                                        item.controllerInteraction.animateDiceSuccess(false, true)
+                                                    }
+                                                }
+                                            }
+                                        }
                                         let current = CACurrentMediaTime()
                                         if let setupTimestamp = strongSelf.setupTimestamp, current - setupTimestamp > 0.3 {
                                             if !strongSelf.placeholderNode.alpha.isZero {
@@ -1971,6 +2018,8 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
             }))
         } else if self.item?.attributes.isGiftMessageComposerPreview == true {
             return ChatMessageBubbleContentTapAction(content: .ignore)
+        } else if self.isFreddy && (self.backgroundNode?.frame.contains(point) == true || self.mediaBackgroundContent?.frame.contains(point) == true) {
+            return ChatMessageBubbleContentTapAction(content: .custom({ [weak self] in self?.playFreddyCelebration() }))
         } else if let backgroundNode = self.backgroundNode, backgroundNode.frame.contains(point) {
             return ChatMessageBubbleContentTapAction(content: .openMessage)
         } else if self.mediaBackgroundContent?.frame.contains(point) == true {
@@ -2042,7 +2091,7 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                 }
             }
             
-            if playSyncedConfetti || (!alreadySeen && self.animationNode.isPlaying) {
+            if !self.isFreddy && (playSyncedConfetti || (!alreadySeen && self.animationNode.isPlaying)) {
                 item.controllerInteraction.playNextOutgoingGift = false
                 
                 Queue.mainQueue().after(self.isStarGift ? 0.1 : 1.0) {
