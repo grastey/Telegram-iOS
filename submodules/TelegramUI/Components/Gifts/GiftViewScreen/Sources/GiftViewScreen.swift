@@ -3194,7 +3194,12 @@ private final class GiftViewSheetContent: CombinedComponent {
             
             let state = context.state
             let subject = state.subject
-            let isFreddy = subject.arguments.map { FreddyGift.isFile($0.gift.file) } ?? false
+            let isFreddy: Bool
+            if let arguments = subject.arguments, case let .generic(gift) = arguments.gift {
+                isFreddy = FreddyGift.isFile(gift.file)
+            } else {
+                isFreddy = false
+            }
 
             let canCopyGiftMessageText: Bool
             if case let .message(message) = subject {
@@ -6866,7 +6871,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
                     switch action.action {
                     case let .starGift(gift, convertStars, text, entities, nameHidden, savedToProfile, converted, upgraded, canUpgrade, upgradeStars, isRefunded, _, upgradeMessageId, peerId, senderId, savedId, prepaidUpgradeHash, giftMessageId, upgradeSeparate, _, toPeerId, number):
                         var reference: StarGiftReference?
-                        if FreddyGift.isFile(gift.file) {
+                        if case let .generic(genericGift) = gift, FreddyGift.isFile(genericGift.file) {
                             reference = nil
                         } else if let peerId, let giftMessageId {
                             reference = .message(messageId: EngineMessage.Id(peerId: peerId, namespace: Namespaces.Message.Cloud, id: giftMessageId))
