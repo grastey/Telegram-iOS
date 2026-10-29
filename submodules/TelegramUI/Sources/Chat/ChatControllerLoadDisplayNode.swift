@@ -998,6 +998,7 @@ extension ChatControllerImpl {
             guard let strongSelf = self else {
                 return
             }
+            if strongSelf.handleFreddyCommand(messages) { return }
 
             var correlationIds: [Int64] = []
             for message in messages {
