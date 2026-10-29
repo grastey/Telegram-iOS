@@ -6,6 +6,10 @@ public enum FreddyGift {
     public static let id: Int64 = -7102920260060
     public static let resourceId: Int64 = -7102920260061
 
+    public static func isPersonalChat(_ peerId: EnginePeer.Id) -> Bool {
+        return peerId.namespace == Namespaces.Peer.CloudUser
+    }
+
     public static func isFile(_ file: TelegramMediaFile) -> Bool {
         return file.fileId.namespace == Namespaces.Media.LocalFile && file.fileId.id == id
     }
@@ -19,11 +23,11 @@ public enum FreddyGift {
             mimeType: "video/webm", size: Int64(data.count),
             attributes: [.FileName(fileName: "FreddyHalloween60.webm"), .Animated,
                          .ImageSize(size: PixelDimensions(width: 512, height: 512)),
-                         .Sticker(displayText: "🎃", packReference: nil, maskData: nil)],
+                         .Sticker(displayText: "рџЋѓ", packReference: nil, maskData: nil)],
             alternativeRepresentations: []
         )
         return .generic(StarGift.Gift(
-            id: id, title: "Freddy • Halloween", file: file, price: 0, convertStars: 0,
+            id: id, title: "Freddy вЂў Halloween", file: file, price: 0, convertStars: 0,
             availability: nil, soldOut: nil, flags: [], upgradeStars: nil, releasedBy: nil,
             perUserLimit: nil, lockedUntilDate: nil, auctionSlug: nil, auctionGiftsPerRound: nil,
             auctionStartDate: nil, upgradeVariantsCount: nil, background: nil
