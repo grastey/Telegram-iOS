@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - demo-local-gifts
+      - freddy-chat-animation
     paths:
       - .github/workflows/demo-ipa.yml
       - .gitmodules
@@ -60,6 +61,15 @@ jobs:
             xcodebuild -downloadComponent MetalToolchain
           fi
           xcrun metal --version
+      - name: Check Freddy command before device build
+        run: |
+          mkdir -p "$RUNNER_TEMP/freddy"
+          cp demo-tests/freddy-main.swift "$RUNNER_TEMP/freddy/main.swift"
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyCommand.swift "$RUNNER_TEMP/freddy/main.swift" -o "$RUNNER_TEMP/freddy/tests"
+          "$RUNNER_TEMP/freddy/tests"
+          swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyGift.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/Chat/ChatControllerFreddy.swift
+          swiftc -frontend -parse submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
       - name: Check local demo wallet
         run: |
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"

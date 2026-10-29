@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - demo-local-gifts
+      - freddy-chat-animation
 permissions:
   contents: read
 jobs:
@@ -12,6 +13,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Test local Freddy command
+        run: |
+          mkdir -p "$RUNNER_TEMP/freddy"
+          cp demo-tests/freddy-main.swift "$RUNNER_TEMP/freddy/main.swift"
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyCommand.swift "$RUNNER_TEMP/freddy/main.swift" -o "$RUNNER_TEMP/freddy/tests"
+          "$RUNNER_TEMP/freddy/tests"
+          swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyGift.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/Chat/ChatControllerFreddy.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/ChatController.swift
+          swiftc -frontend -parse submodules/AnimatedStickerNode/Sources/AnimatedStickerNode.swift
+          swiftc -frontend -parse submodules/AnimatedStickerNode/Sources/DirectAnimatedStickerNode.swift
+          swiftc -frontend -parse submodules/AnimatedStickerNode/Sources/VideoStickerFrameSource.swift
+          swiftc -frontend -parse submodules/TelegramAnimatedStickerNode/Sources/TelegramAnimatedStickerNode.swift
       - name: Test local demo wallet
         run: |
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/DemoWallet.swift demo-tests/main.swift -o "$RUNNER_TEMP/demo-wallet-tests"

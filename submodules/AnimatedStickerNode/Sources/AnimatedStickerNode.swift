@@ -144,9 +144,14 @@ public struct AnimatedStickerStatus: Equatable {
 public protocol AnimatedStickerNodeSource {
     var fitzModifier: EmojiFitzModifier? { get }
     var isVideo: Bool { get }
+    var maximumFrameRate: Int { get }
     
     func cachedDataPath(width: Int, height: Int) -> Signal<(String, Bool), NoError>
     func directDataPath(attemptSynchronously: Bool) -> Signal<String?, NoError>
+}
+
+public extension AnimatedStickerNodeSource {
+    var maximumFrameRate: Int { return 30 }
 }
 
 public protocol AnimatedStickerNode: ASDisplayNode {
@@ -211,7 +216,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     private let timer = Atomic<SwiftSignalKit.Timer?>(value: nil)
     private let frameSource = Atomic<QueueLocalObject<AnimatedStickerFrameSourceWrapper>?>(value: nil)
     
-    private var directData: (Data, String, Int, Int, String?, EmojiFitzModifier?, Bool)?
+    private var directData: (Data, String, Int, Int, String?, EmojiFitzModifier?, Bool, Int)?
     private var cachedData: (Data, Bool, EmojiFitzModifier?)?
     
     private let useMetalCache: Bool
@@ -361,7 +366,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                     return
                 }
                 if let directData = try? Data(contentsOf: URL(fileURLWithPath: path), options: [.mappedRead]) {
-                    strongSelf.directData = (directData, path, width, height, cachePathPrefix, source.fitzModifier, source.isVideo)
+                    strongSelf.directData = (directData, path, width, height, cachePathPrefix, source.fitzModifier, source.isVideo, source.maximumFrameRate)
                 }
                 if case let .still(position) = strongSelf.playbackMode {
                     strongSelf.seekTo(position)
@@ -485,7 +490,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                     let notifyUpdated: (() -> Void)? = nil
                     if let directData = directData {
                         if directData.6 {
-                            maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4)
+                            maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4, maximumFrameRate: directData.7)
                         } else {
                             maybeFrameSource = AnimatedStickerDirectFrameSource(queue: queue, data: directData.0, width: directData.2, height: directData.3, cachePathPrefix: directData.4, useMetalCache: useMetalCache, fitzModifier: directData.5, lottieSettings: lottieSettings)
                         }
@@ -603,7 +608,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                 let notifyUpdated: (() -> Void)? = nil
                 if let directData = directData {
                     if directData.6 {
-                        maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4)
+                        maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4, maximumFrameRate: directData.7)
                     } else {
                         maybeFrameSource = AnimatedStickerDirectFrameSource(queue: queue, data: directData.0, width: directData.2, height: directData.3, cachePathPrefix: directData.4, useMetalCache: useMetalCache, fitzModifier: directData.5, lottieSettings: lottieSettings)
                     }
@@ -731,7 +736,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
             } else {
                 if let directData = directData {
                     if directData.6 {
-                        maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4)
+                        maybeFrameSource = VideoStickerDirectFrameSource(queue: queue, path: directData.1, width: directData.2, height: directData.3, cachePathPrefix: directData.4, maximumFrameRate: directData.7)
                     } else {
                         maybeFrameSource = AnimatedStickerDirectFrameSource(queue: queue, data: directData.0, width: directData.2, height: directData.3, cachePathPrefix: directData.4, useMetalCache: useMetalCache, fitzModifier: directData.5, lottieSettings: lottieSettings)
                     }

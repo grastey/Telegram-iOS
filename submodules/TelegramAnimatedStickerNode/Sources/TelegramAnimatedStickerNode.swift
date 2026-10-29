@@ -46,6 +46,11 @@ public final class AnimatedStickerNodeLocalFileSource: AnimatedStickerNodeSource
 }
 
 public final class AnimatedStickerResourceSource: AnimatedStickerNodeSource {
+    public var maximumFrameRate: Int {
+        if let resource = self.resource as? LocalFileMediaResource, resource.fileId == FreddyGift.resourceId { return 60 }
+        return 30
+    }
+
     public let postbox: Postbox
     public let resource: MediaResource
     public let fitzModifier: EmojiFitzModifier?
@@ -78,6 +83,9 @@ public final class AnimatedStickerResourceSource: AnimatedStickerNodeSource {
     }
     
     public func directDataPath(attemptSynchronously: Bool) -> Signal<String?, NoError> {
+        if let resource = self.resource as? LocalFileMediaResource, resource.fileId == FreddyGift.resourceId {
+            return .single(getAppBundle().path(forResource: "FreddyHalloween60", ofType: "webm"))
+        }
         return self.postbox.mediaBox.resourceData(self.resource, attemptSynchronously: attemptSynchronously)
         |> map { data -> String? in
             if data.complete {
