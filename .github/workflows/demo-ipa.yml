@@ -63,6 +63,7 @@ jobs:
           xcrun metal --version
       - name: Check Freddy command before device build
         run: |
+          python3 demo-tests/chat-gift-assets-test.py
           mkdir -p "$RUNNER_TEMP/freddy"
           cp demo-tests/freddy-main.swift "$RUNNER_TEMP/freddy/main.swift"
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/FreddyCommand.swift "$RUNNER_TEMP/freddy/main.swift" -o "$RUNNER_TEMP/freddy/tests"
