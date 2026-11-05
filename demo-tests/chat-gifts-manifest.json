@@ -1,0 +1,65 @@
+[
+  {
+    "resource": "ChatGiftCybertruck",
+    "command": "/кибертрак",
+    "stars": 5000,
+    "sha256": "769feb75454c47b08c92ceb94d035b0c342bd5ea644290a10b0613e8be4de909",
+    "source_zip": "sticker.tgs (5).zip"
+  },
+  {
+    "resource": "ChatGiftHammer",
+    "command": "/молоток",
+    "stars": 500,
+    "sha256": "c102c427770e263767836aa37fc56c25fdca334681c469a8eb0570f949bf5fdd",
+    "source_zip": "sticker.tgs (6).zip"
+  },
+  {
+    "resource": "ChatGiftCross",
+    "command": "/крест",
+    "stars": 2500,
+    "sha256": "f55def1e318fb0584feee9e4d87c1cebc30b8889e7ccc5b8a7196720e97124ab",
+    "source_zip": "sticker.tgs (7).zip"
+  },
+  {
+    "resource": "ChatGiftSnowman",
+    "command": "/снеговик",
+    "stars": 1000,
+    "sha256": "94abd10d96ce79f62f66e8967805350c503da5b74e6452977b8b3d944ce2ac73",
+    "source_zip": "sticker.tgs (8).zip"
+  },
+  {
+    "resource": "ChatGiftGingerbread",
+    "command": "/пряник",
+    "stars": 500,
+    "sha256": "28c56150e40e29a254ad5fed4cc56d87b720127bab035601756f209252ad7fb5",
+    "source_zip": "sticker.tgs (9).zip"
+  },
+  {
+    "resource": "ChatGiftTeddy",
+    "command": "/тедди",
+    "stars": 2500,
+    "sha256": "b735d7661a69e470269857e6018a92001a7cd9686677d08c4ad08130297f7d9f",
+    "source_zip": "sticker.tgs (10).zip"
+  },
+  {
+    "resource": "ChatGiftCocoa",
+    "command": "/какао",
+    "stars": 100,
+    "sha256": "6f5b6a104bb8fb1622fdbd7a5eabdea9df4919a06bdd6fdd73eba991d6364ae5",
+    "source_zip": "sticker.tgs (11).zip"
+  },
+  {
+    "resource": "ChatGiftStar",
+    "command": "/звезда",
+    "stars": 1000,
+    "sha256": "c06e001084759437e5a0eaddb7e99928977920451fc4a028922b5e9da1773c26",
+    "source_zip": "sticker.tgs (12).zip"
+  },
+  {
+    "resource": "ChatGiftCookie",
+    "command": "/печенье",
+    "stars": 100,
+    "sha256": "16c3b8274bccb71ca3473373d5885ffd80ef96ba92d4a1a563b05cfbc2bdff90",
+    "source_zip": "sticker.tgs (13).zip"
+  }
+]
