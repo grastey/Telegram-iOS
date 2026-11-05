@@ -97,13 +97,17 @@ jobs:
           PY
       - name: Import public build-only signing material
         run: python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+      - name: Refresh public build-only verification profiles
+        run: |
+          python3 build-system/Make/RefreshVerificationProfiles.py --self-test
+          python3 build-system/Make/RefreshVerificationProfiles.py --destination="$RUNNER_TEMP/demogram-fake-codesigning"
       - name: Compile device IPA
         run: |
           python3 -u build-system/Make/Make.py \
             --cacheDir="$RUNNER_TEMP/telegram-bazel-cache" \
             build \
             --configurationPath="$RUNNER_TEMP/demogram-config.json" \
-            --codesigningInformationPath=build-system/fake-codesigning \
+            --codesigningInformationPath="$RUNNER_TEMP/demogram-fake-codesigning" \
             --configuration=release_arm64 \
             --buildNumber="$GITHUB_RUN_NUMBER" \
             --outputBuildArtifactsPath="$RUNNER_TEMP/demogram-artifacts"
@@ -165,3 +169,4 @@ jobs:
       - name: Remove temporary application credentials
         if: always()
         run: python3 -c 'import os,pathlib; (pathlib.Path(os.environ["RUNNER_TEMP"])/"demogram-config.json").unlink(missing_ok=True)'
+
