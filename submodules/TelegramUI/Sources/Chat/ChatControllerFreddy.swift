@@ -20,15 +20,15 @@ extension ChatControllerImpl {
               mediaReference == nil, let command = FreddyCommand.parse(text) else { return false }
         guard case let .peer(peerId) = self.chatLocation, FreddyGift.isPersonalChat(peerId),
               self.presentationInterfaceState.interfaceState.editMessage == nil else {
-            self.present(textAlertController(context: self.context, title: "Freddy", text: "РљРѕРјР°РЅРґР° РґРѕСЃС‚СѓРїРЅР° РІ Р»РёС‡РЅРѕРј С‡Р°С‚Рµ.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+            self.present(textAlertController(context: self.context, title: command.gift.title, text: "Команда доступна только в личном чате.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
             return true
         }
-        guard let path = getAppBundle().path(forResource: "FreddyHalloween60", ofType: "webm"),
+        guard let path = getAppBundle().path(forResource: command.gift.resourceName, ofType: command.gift.resourceExtension),
               let data = try? Data(contentsOf: URL(fileURLWithPath: path)), !data.isEmpty else {
-            self.present(textAlertController(context: self.context, title: "Freddy", text: "РќРµ РЅР°Р№РґРµРЅ С„Р°Р№Р» Р°РЅРёРјР°С†РёРё. РџРµСЂРµСѓСЃС‚Р°РЅРѕРІРё РїРѕСЃР»РµРґРЅСЋСЋ СЃР±РѕСЂРєСѓ РјРѕРґР°.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
+            self.present(textAlertController(context: self.context, title: command.gift.title, text: "Не найден файл анимации. Установите последнюю сборку клиента.", actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})]), in: .window(.root))
             return true
         }
-        let gift = FreddyGift.make(account: self.context.account, data: data)
+        let gift = FreddyGift.make(account: self.context.account, data: data, definition: command.gift)
         self.hintPlayNextOutgoingGift()
         self.updateChatPresentationInterfaceState(animated: false, interactive: false) { state in
             state.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedComposeInputState(ChatTextInputState(inputText: NSAttributedString())) }

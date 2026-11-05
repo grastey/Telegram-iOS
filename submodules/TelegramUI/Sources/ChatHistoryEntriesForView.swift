@@ -12,8 +12,10 @@ import TextFormat
 import Markdown
 import Display
 import TelegramStringFormatting
+import AppBundle
 
 struct ChatHistoryEntriesForViewState {
+    var commandGifts: [Int64: StarGift] = [:]
     private var messageStableIdToLocalId: [UInt32: Int64] = [:]
     
     init() {
@@ -143,6 +145,24 @@ func chatHistoryEntriesForView(
     var count = 0
     loop: for entry in view.entries {
         var message = entry.message.withAppliedEphemeralReplacementMessage()
+        if DemoWallet.isEnabled, case let .peer(peerId) = location,
+           peerId == message.id.peerId, message.id.namespace == Namespaces.Message.Cloud,
+           peerId != context.account.peerId,
+           FreddyCommand.shouldReplaceIncoming(text: message.text, isIncoming: message.flags.contains(.Incoming),
+               isPersonalChat: FreddyGift.isPersonalChat(peerId), hasMedia: !message.media.isEmpty,
+               isForwarded: message.forwardInfo != nil, authorMatchesChat: message.author?.id == peerId),
+           let command = FreddyCommand.parse(message.text) {
+            var incomingFreddyGift = currentState.commandGifts[command.gift.id]
+            if incomingFreddyGift == nil,
+               let path = getAppBundle().path(forResource: command.gift.resourceName, ofType: command.gift.resourceExtension),
+               let data = try? Data(contentsOf: URL(fileURLWithPath: path)), !data.isEmpty {
+                incomingFreddyGift = FreddyGift.make(account: context.account, data: data, definition: command.gift)
+                currentState.commandGifts[command.gift.id] = incomingFreddyGift
+            }
+            if let incomingFreddyGift {
+                message = FreddyGift.incomingMessage(EngineMessage(message), gift: incomingFreddyGift, accountPeerId: context.account.peerId)._asMessage()
+            }
+        }
         var isRead = entry.isRead
         
         var pinToTop = false
