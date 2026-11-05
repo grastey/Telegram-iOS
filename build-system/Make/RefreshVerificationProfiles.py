@@ -24,6 +24,8 @@ CERTIFICATE_LIMIT = datetime.datetime(2030, 10, 28)
 
 
 def refreshed_profile(profile, now):
+    # XML plist dates and macOS CMS round trips have whole-second precision.
+    now = now.replace(microsecond=0)
     certificates = profile.get('DeveloperCertificates', [])
     if len(certificates) != 1 or hashlib.sha256(certificates[0]).hexdigest() != PUBLIC_CERT_SHA256:
         raise ValueError('Refusing to modify anything except the pinned public verification certificate.')
@@ -72,7 +74,8 @@ def refresh(destination):
                 '-i', str(plist), '-o', str(output))
             decoded = plistlib.loads(run('/usr/bin/security', 'cms', '-D', '-i', str(output)))
             if decoded != updated:
-                raise RuntimeError('CMS round trip failed for ' + source.name)
+                changed_keys = sorted(key for key in set(decoded) | set(updated) if decoded.get(key) != updated.get(key))
+                raise RuntimeError('CMS round trip failed for ' + source.name + ': ' + ', '.join(changed_keys))
             if decoded['Entitlements'] != original['Entitlements']:
                 raise RuntimeError('Entitlements must never change.')
             print(source.name + ': public build-only profile valid through ' + decoded['ExpirationDate'].isoformat())
@@ -98,6 +101,8 @@ def self_test():
     assert updated['CreationDate'] < now < updated['ExpirationDate']
     assert updated['ExpirationDate'] == now + datetime.timedelta(days=365)
     assert plistlib.loads(plistlib.dumps(updated)) == updated
+    precise = refreshed_profile(fixture, now.replace(microsecond=123456))
+    assert plistlib.loads(plistlib.dumps(precise)) == precise
     assert refreshed_profile(fixture, datetime.datetime(2030, 10, 1))['ExpirationDate'] == CERTIFICATE_LIMIT
     for invalid, date in [(dict(fixture, DeveloperCertificates=[b'unrelated']), now),
                           (dict(fixture, Entitlements={'application-identifier': 'OTHER.app'}), now),
