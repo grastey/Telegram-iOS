@@ -8,6 +8,7 @@ on:
       - freddy-chat-animation
     paths:
       - .github/workflows/demo-ipa.yml
+      - build-system/Make/RefreshVerificationProfiles.py
       - .gitmodules
       - submodules/**
       - demo-tests/**
