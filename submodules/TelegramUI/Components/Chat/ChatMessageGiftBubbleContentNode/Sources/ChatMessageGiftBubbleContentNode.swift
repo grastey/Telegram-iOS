@@ -844,9 +844,12 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                     if incoming, let author = item.message.author {
                                         title = item.presentationData.strings.Notification_StarGift_Title(EnginePeer(author).compactDisplayTitle).string
                                     }
-                                    let stars = item.presentationData.strings.Notification_StarGift_Subtitle_Stars(Int32(FreddyGift.displayStars))
-                                    text = item.presentationData.strings.Notification_StarGift_Subtitle(stars).string
-                                    if let giftText, !giftText.isEmpty { text += "\n\n" + giftText }
+                                    if let giftText, !giftText.isEmpty {
+                                        text = giftText
+                                    } else {
+                                        let stars = item.presentationData.strings.Notification_StarGift_Subtitle_Stars(Int32(clamping: gift.convertStars))
+                                        text = item.presentationData.strings.Notification_StarGift_Subtitle(stars).string
+                                    }
                                 }
                                 if let availability = gift.availability {
                                     let availabilityString: String
