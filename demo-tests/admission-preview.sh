@@ -47,4 +47,4 @@ assert len(data)==5 and all(data.values()), data
 PY
 if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
 python3 -m pip install --quiet pillow numpy --break-system-packages
-python3 tools/animation_sheet.py "$OUT/admission.mov" "$OUT/frames" --start 0 --end 11 --tile-width 200 --columns 6 --rows 4
+python3 tools/animation_sheet.py "$OUT/admission.mov" "$OUT/frames" --start 0 --tile-width 200 --columns 6 --rows 4
