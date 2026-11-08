@@ -50,6 +50,10 @@ class Relay:
                 CREATE INDEX IF NOT EXISTS incoming ON events(recipient,seq);
                 CREATE INDEX IF NOT EXISTS outgoing ON events(sender,seq);
                 CREATE INDEX IF NOT EXISTS rate_window ON events(sender,created);
+                CREATE TABLE IF NOT EXISTS private_members (
+                    account TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1,
+                    label TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL
+                );
             """)
 
     def connect(self):
@@ -82,6 +86,45 @@ class Relay:
                 hashlib.sha256(token.encode()).hexdigest(),
             ))
 
+    def private_member(self, account):
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT enabled FROM private_members WHERE account=?", (account,)).fetchone()
+        return row is not None and bool(row['enabled'])
+
+    def enroll_member(self, account, label='', days=365):
+        account_id(account)
+        if not isinstance(days, int) or not 1 <= days <= 3650:
+            raise ValueError('Lifetime must be 1–3650 days')
+        if not isinstance(label, str) or len(label) > 100:
+            raise ValueError('Label must be at most 100 characters')
+        token = secrets.token_hex(32)
+        with closing(self.connect()) as db:
+            db.execute('BEGIN IMMEDIATE')
+            try:
+                db.execute('''INSERT INTO private_members VALUES (?,1,?,?)
+                    ON CONFLICT(account) DO UPDATE SET enabled=1,label=excluded.label''',
+                    (account, label, int(time.time())))
+                db.execute('INSERT INTO devices VALUES (?,?,?,?,0)',
+                    (hashlib.sha256(token.encode()).hexdigest(), account, 'private', int(time.time()) + days * 86400))
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return token
+
+    def disable_member(self, account):
+        account_id(account)
+        with closing(self.connect()) as db:
+            db.execute('BEGIN IMMEDIATE')
+            try:
+                db.execute('''INSERT INTO private_members VALUES (?,0,'',?)
+                    ON CONFLICT(account) DO UPDATE SET enabled=0''', (account, int(time.time())))
+                db.execute('UPDATE devices SET revoked=1 WHERE account=?', (account,))
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
     def authenticate(self, header):
         if not header.startswith("Bearer ") or len(header) > 200:
             raise APIError(401, "unauthorized")
@@ -91,6 +134,10 @@ class Relay:
                              (digest, int(time.time()))).fetchone()
         if row is None:
             raise APIError(401, "unauthorized")
+        with closing(self.connect()) as db:
+            member = db.execute('SELECT enabled FROM private_members WHERE account=?', (row['account'],)).fetchone()
+        if member is not None and not member['enabled']:
+            raise APIError(403, 'access_revoked')
         return row["account"]
 
     @staticmethod
@@ -126,7 +173,13 @@ class Relay:
             db.execute("BEGIN IMMEDIATE")
             try:
                 pair = tuple(sorted((sender, recipient)))
-                if not db.execute("SELECT 1 FROM pairs WHERE a=? AND b=?", pair).fetchone():
+                memberships = {row['account']: bool(row['enabled']) for row in db.execute(
+                    'SELECT account,enabled FROM private_members WHERE account IN (?,?)', (sender, recipient))}
+                if sender in memberships or recipient in memberships:
+                    # A disabled member never falls back to legacy pair permission.
+                    if not memberships.get(sender) or not memberships.get(recipient):
+                        raise APIError(403, 'private_member_required')
+                elif not db.execute("SELECT 1 FROM pairs WHERE a=? AND b=?", pair).fetchone():
                     raise APIError(403, "pair_not_enabled")
                 if not db.execute("SELECT 1 FROM devices WHERE account=? AND revoked=0 AND expires>?",
                                   (recipient, int(time.time()))).fetchone():
@@ -173,6 +226,8 @@ class Application:
                 account = self.relay.authenticate(env.get("HTTP_AUTHORIZATION", ""))
                 if path == "/v1/me" and method == "GET":
                     result = {"account": account, "protocol": 1}
+                    if self.relay.private_member(account):
+                        result['private_access'] = True
                 elif path == "/v1/gifts" and method == "POST":
                     if env.get("CONTENT_TYPE", "").split(";", 1)[0] != "application/json":
                         raise APIError(415, "json_required")
@@ -225,6 +280,12 @@ if __name__ == "__main__":
     pair = commands.add_parser("pair")
     pair.add_argument("a")
     pair.add_argument("b")
+    member = commands.add_parser('member', help='Issue a personal private-fork key bound to Telegram ID')
+    member.add_argument('account')
+    member.add_argument('--label', default='')
+    member.add_argument('--days', type=int, default=365)
+    disable = commands.add_parser('disable-member', help='Disable access and revoke all keys for an account')
+    disable.add_argument('account')
     commands.add_parser("serve-local")
     args = parser.parse_args()
     relay = Relay(args.db)
@@ -234,6 +295,11 @@ if __name__ == "__main__":
     elif args.command == "pair":
         relay.allow_pair(args.a, args.b)
         print("Pair enabled")
+    elif args.command == 'member':
+        print(relay.enroll_member(args.account, args.label, args.days))
+    elif args.command == 'disable-member':
+        relay.disable_member(args.account)
+        print('Private member disabled; all account keys revoked')
     else:
         from wsgiref.simple_server import make_server
         with make_server("127.0.0.1", 8765, Application(relay)) as server:
