@@ -12,6 +12,7 @@ final class GhostGramPrivateAccess {
     private var statusLabel: UILabel?
     private var field: UITextField?
     private var button: UIButton?
+    private weak var scrollView: UIScrollView?
     private var timer: Foundation.Timer?
     private var task: URLSessionDataTask?
     private var accountId: Int64?
@@ -46,6 +47,17 @@ final class GhostGramPrivateAccess {
                 // Cover the app switcher as well as the interactive application.
                 self?.show()
             })
+            self.observers.append(NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] notification in
+                guard let self, let host = self.host, let scroll = self.scrollView,
+                      let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                let keyboard = host.convert(frame, from: nil)
+                let overlap = max(0, host.bounds.maxY - keyboard.minY)
+                scroll.contentInset.bottom = overlap
+                scroll.verticalScrollIndicatorInsets.bottom = overlap
+                if let field = self.field, field.isFirstResponder {
+                    scroll.scrollRectToVisible(field.convert(field.bounds, to: scroll).insetBy(dx: 0, dy: -16), animated: false)
+                }
+            })
         }
         self.refresh()
     }
@@ -54,6 +66,9 @@ final class GhostGramPrivateAccess {
         dispatchPrecondition(condition: .onQueue(.main))
         guard self.accountId != id else { return }
         self.accountId = id
+        self.cover?.endEditing(true)
+        self.cover?.removeFromSuperview()
+        self.cover = nil
         self.boundId = nil
         self.generation += 1
         self.checking = false
@@ -107,9 +122,11 @@ final class GhostGramPrivateAccess {
         stack.addArrangedSubview(self.label("Код от администратора открывает приватку и автоматически подключает синхронизацию. Он привязан к твоему Telegram-аккаунту.", size: 15))
         if let id = self.accountId { stack.addArrangedSubview(self.label("Твой Telegram ID: \(id)", size: 14)) }
         let field = UITextField()
-        field.placeholder = "Личный код доступа"
+        field.attributedPlaceholder = NSAttributedString(string: "Личный код доступа", attributes: [.foregroundColor: UIColor(white: 0.72, alpha: 1)])
         field.isSecureTextEntry = true; field.autocorrectionType = .no; field.autocapitalizationType = .none
         field.textColor = .white; field.borderStyle = .roundedRect
+        field.tintColor = .white; field.keyboardType = .asciiCapable; field.returnKeyType = .go
+        field.addTarget(self, action: #selector(self.submit), for: .editingDidEndOnExit)
         field.backgroundColor = UIColor(white: 0.16, alpha: 1)
         field.heightAnchor.constraint(equalToConstant: 50).isActive = true
         stack.addArrangedSubview(field)
@@ -127,6 +144,7 @@ final class GhostGramPrivateAccess {
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scroll.keyboardDismissMode = .onDrag
         cover.addSubview(scroll); scroll.addSubview(stack)
+        self.scrollView = scroll
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 80),
             stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 28),
