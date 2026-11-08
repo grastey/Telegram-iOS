@@ -450,6 +450,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         self.window = window
         self.nativeWindow = window
+        GhostGramPrivateAccess.shared.attach(to: window)
         
         hostView.containerView.layer.addSublayer(MetalEngine.shared.rootLayer)
         // On the first start after an update, compile the pipelines that would otherwise stall their first use.
@@ -1411,6 +1412,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             self.crashReportPromptDisposable.set(nil)
             self.contextValue = context
+            GhostGramPrivateAccess.shared.setAccount(context?.context.account.peerId.id._internalGetInt64Value())
             if let context = context {
                 setupLegacyComponents(context: context.context)
                 let isReady = context.isReady.get()
@@ -3540,3 +3542,4 @@ private final class NavigationBarOverflowMenuReferenceSource: ContextReferenceCo
         return ContextControllerReferenceViewInfo(referenceView: self.sourceView, contentAreaInScreenSpace: mainWindowScreenBounds)
     }
 }
+
