@@ -1,6 +1,8 @@
 name: Validate GhostGram Android code
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [freddy-chat-animation]
   push:
     branches: [demo-local-gifts]
     paths:
@@ -9,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ghostgram-android-validation
+  group: ghostgram-private-validation-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   compile:
@@ -54,3 +56,4 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :TMessagesProj:compileReleaseJavaWithJavac --no-daemon --max-workers=2 --stacktrace
+

@@ -2,6 +2,8 @@
 name: Build DemoGram IPA
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [freddy-chat-animation]
   push:
     branches:
       - demo-local-gifts
@@ -15,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: demogram-ipa
+  group: ghostgram-private-ipa-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
@@ -159,15 +161,16 @@ jobs:
                       entry.compress_type = zipfile.ZIP_DEFLATED
                       with path.open("rb") as source, archive.open(entry, "w") as destination:
                           shutil.copyfileobj(source, destination)
-          (output / "READ-ME.txt").write_text("Demo build. Re-sign with your own Apple account and a unique bundle ID before installing. This IPA is not App Store signed. Demo Stars/TON and gift cards exist only on this device.\n")
+          (output / "READ-ME.txt").write_text("GhostGram Private. Requires a personal private-member key on sync.grastey.com. Re-sign with your own Apple account before installing. Telegram credentials stay with Telegram. Synthetic gifts sync between enrolled private members while the apps are open.\n")
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: DemoGram-personal-resigning-required
+          name: GhostGram-Private-personal-resigning-required
           path: demo-output/
           if-no-files-found: error
           retention-days: 3
       - name: Remove temporary application credentials
         if: always()
         run: python3 -c 'import os,pathlib; (pathlib.Path(os.environ["RUNNER_TEMP"])/"demogram-config.json").unlink(missing_ok=True)'
+
 

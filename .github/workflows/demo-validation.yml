@@ -1,6 +1,8 @@
 name: Demo fork validation
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [freddy-chat-animation]
   push:
     branches:
       - demo-local-gifts
@@ -10,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Test local Freddy command
@@ -72,3 +74,16 @@ jobs:
           python3 -c 'import json; print("Required Xcode:", json.load(open("versions.json"))["xcode"])'
           xcodebuild -version
           ls /Applications | grep Xcode || true
+
+
+      - name: Test private relay and token revocation
+        run: python3 -m unittest discover -s ghostgram-relay -p 'test_*.py' -v
+      - name: Typecheck and record native admission screen
+        run: bash demo-tests/admission-preview.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GhostGram-private-access-preview
+          path: ${{ runner.temp }}/admission-preview/
+          if-no-files-found: warn
+          retention-days: 7
