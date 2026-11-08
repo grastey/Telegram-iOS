@@ -986,7 +986,7 @@ diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramPrivate
 new file mode 100644
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramPrivateAccess.java
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,209 @@
 +package org.telegram.messenger;
 +
 +import android.app.Activity;
@@ -1062,6 +1062,8 @@ new file mode 100644
 +        if (owner == null || owner.isFinishing()) return;
 +        long account = currentAccount();
 +        if (checkedAccount != account) {
++            if (gate != null) gate.dismiss();
++            gate = null;
 +            generation++;
 +            checking = false;
 +            checkedAccount = account;
