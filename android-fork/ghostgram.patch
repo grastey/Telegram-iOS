@@ -1,9 +1,9 @@
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99dbba418f
+index 0000000..510e9f6
 --- /dev/null
 +++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramSync.java
-@@ -0,0 +1,357 @@
+@@ -0,0 +1,509 @@
 +package org.telegram.messenger;
 +
 +import android.app.AlertDialog;
@@ -29,6 +29,7 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +import java.io.ByteArrayOutputStream;
 +import java.io.InputStream;
 +import java.net.URL;
++import java.lang.ref.WeakReference;
 +import java.nio.ByteBuffer;
 +import java.nio.charset.StandardCharsets;
 +import java.security.KeyStore;
@@ -68,12 +69,80 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +    private final long userId;
 +    private final SharedPreferences preferences;
 +    private final AtomicBoolean busy = new AtomicBoolean();
-+    private volatile String lastStatus = "Не подключено";
++    private volatile String lastStatus;
++    private volatile String sessionToken;
++    private volatile boolean sessionOnly;
++    private WeakReference<TextView> statusView = new WeakReference<>(null);
++
++    private static final class RelayException extends Exception {
++        final int status;
++        final String code;
++        RelayException(int status, String code) {
++            super("Relay HTTP " + status);
++            this.status = status;
++            this.code = code;
++        }
++    }
++
++    private String failure(Exception error) {
++        if (error instanceof RelayException) {
++            RelayException relay = (RelayException) error;
++            if (relay.status == 401) return "Ключ отклонён или истёк — введи новый ключ для этого Telegram ID";
++            if ("pair_not_enabled".equals(relay.code)) return "Обмен с получателем не разрешён — включи пару на сервере";
++            if ("recipient_not_connected".equals(relay.code)) return "У получателя нет действующего ключа — создай и подключи его";
++            if (relay.status == 429) return "Лимит отправки — повторим автоматически";
++            return "Сервер вернул HTTP " + relay.status + " — повторим проверку";
++        }
++        if (error instanceof java.io.IOException) return "Нет связи с сервером — проверь интернет или VPN";
++        return "Не удалось обработать синхронизацию — повторим автоматически";
++    }
++
++    private void setStatus(String value) {
++        lastStatus = value;
++        AndroidUtilities.runOnUIThread(this::refreshStatus);
++    }
++
++    private void refreshStatus() {
++        TextView view = statusView.get();
++        if (view == null) return;
++        String state = lastStatus != null ? lastStatus : enabled()
++                ? "Ключ сохранён — проверяем соединение" : "Не подключено — введи ключ для этого аккаунта";
++        int pending = 0;
++        try { pending = outbox().length(); } catch (Exception ignored) { }
++        long synced = preferences.getLong("last_sync", 0);
++        String time = synced == 0 ? "" : "\nПоследняя синхронизация: " +
++                java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.MEDIUM).format(new java.util.Date(synced));
++        view.setText("Telegram ID: " + userId + "\n" + state + (sessionOnly ? "\nХранилище недоступно: ключ только до закрытия приложения." : "") + "\nВ очереди: " + pending + time + "\nsync.grastey.com");
++    }
 +
 +    private GhostGramSync(int account) {
++        this(account, UserConfig.getInstance(account).getClientUserId());
++    }
++
++    private GhostGramSync(int account, long userId) {
 +        this.account = account;
-+        this.userId = UserConfig.getInstance(account).getClientUserId();
++        this.userId = userId;
 +        this.preferences = ApplicationLoader.applicationContext.getSharedPreferences("ghostgram_sync_" + userId, Context.MODE_PRIVATE);
++    }
++
++    private static synchronized GhostGramSync accessStorage(long userId) {
++        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
++            if (UserConfig.getInstance(i).isClientActivated() && UserConfig.getInstance(i).getClientUserId() == userId) return get(i);
++        }
++        return new GhostGramSync(-1, userId);
++    }
++
++    public static String accessToken(long userId) { return userId > 0 ? accessStorage(userId).token() : null; }
++
++    /** Call only after /v1/me verifies both membership and this exact user ID. */
++    public static boolean saveAccessToken(long userId, String value) {
++        GhostGramSync storage = accessStorage(userId);
++        storage.sessionToken = null;
++        boolean persisted = false;
++        try { storage.saveToken(value); persisted = value.equals(storage.token()); } catch (Exception ignored) { }
++        storage.sessionToken = value;
++        storage.sessionOnly = !persisted;
++        return persisted;
 +    }
 +
 +    public static synchronized GhostGramSync get(int account) {
@@ -104,6 +173,8 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +    }
 +
 +    private String token() {
++        String cached = sessionToken;
++        if (cached != null) return cached;
 +        try {
 +            String encoded = preferences.getString("token", null);
 +            if (encoded == null) return null;
@@ -111,7 +182,9 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +            if (bytes.length < 29) return null;
 +            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
 +            cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Arrays.copyOfRange(bytes, 0, 12)));
-+            return new String(cipher.doFinal(bytes, 12, bytes.length - 12), StandardCharsets.UTF_8);
++            String restored = new String(cipher.doFinal(bytes, 12, bytes.length - 12), StandardCharsets.UTF_8);
++            sessionToken = restored;
++            return restored;
 +        } catch (Exception ignored) { return null; }
 +    }
 +
@@ -138,6 +211,18 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +        if (!preferences.edit().putString("outbox", next.toString()).commit()) throw new Exception("Storage failed");
 +    }
 +
++    private synchronized void defer(String clientId) throws Exception {
++        JSONArray old = outbox(), next = new JSONArray();
++        JSONObject failed = null;
++        for (int i = 0; i < old.length(); i++) {
++            JSONObject item = old.getJSONObject(i);
++            if (clientId.equals(item.getString("client_id"))) failed = item;
++            else next.put(item);
++        }
++        if (failed != null) next.put(failed);
++        if (!preferences.edit().putString("outbox", next.toString()).commit()) throw new Exception("Storage failed");
++    }
++
 +    private JSONObject request(String path, String token, JSONObject body) throws Exception {
 +        HttpsURLConnection connection = (HttpsURLConnection) new URL(BASE + path).openConnection();
 +        connection.setInstanceFollowRedirects(false);
@@ -154,7 +239,19 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +                try (java.io.OutputStream stream = connection.getOutputStream()) { stream.write(bytes); }
 +            }
 +            int status = connection.getResponseCode();
-+            if (status != 200 && status != 201) throw new Exception("Relay HTTP " + status);
++            if (status != 200 && status != 201) {
++                String code = "";
++                try (InputStream input = connection.getErrorStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
++                    if (input != null) {
++                        byte[] buffer = new byte[512];
++                        int length;
++                        while ((length = input.read(buffer)) != -1 && output.size() + length <= 4096) output.write(buffer, 0, length);
++                        String candidate = new JSONObject(output.toString("UTF-8")).optString("error");
++                        if ("pair_not_enabled".equals(candidate) || "recipient_not_connected".equals(candidate)) code = candidate;
++                    }
++                } catch (Exception ignored) { }
++                throw new RelayException(status, code);
++            }
 +            try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 +                byte[] buffer = new byte[4096];
 +                int length;
@@ -178,19 +275,26 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +                String token = token();
 +                if (token == null || !sameSession(token) || !foreground) return;
 +                JSONObject me = request("/v1/me", token, null);
-+                if (!String.valueOf(userId).equals(me.getString("account")) || me.getInt("protocol") != 1) throw new Exception("Account mismatch");
++                if (!String.valueOf(userId).equals(me.getString("account")) || me.getInt("protocol") != 1) {
++                    setStatus("Ключ принадлежит другому аккаунту или сервер несовместим");
++                    return;
++                }
++                if (!sameSession(token)) return;
++                setStatus("Ключ подтверждён — синхронизируем подарки");
 +                JSONArray pending = outbox();
-+                boolean outgoingPending = false;
-+                if (pending.length() > 0) {
++                String outgoingError = null;
++                for (int pendingIndex = 0; pendingIndex < Math.min(pending.length(), 10); pendingIndex++) {
++                    if (!sameSession(token) || !foreground) return;
++                    JSONObject next = pending.getJSONObject(pendingIndex);
 +                    try {
-+                    JSONObject next = pending.getJSONObject(0);
 +                    JSONObject sent = request("/v1/gifts", token, next);
 +                    if (!sameSession(token) || !sent.getBoolean("synthetic") || !String.valueOf(userId).equals(sent.getString("sender"))
 +                            || !next.getString("client_id").equals(sent.getString("client_id"))) throw new Exception("Invalid receipt");
 +                    acknowledge(next.getString("client_id"));
-+                    } catch (Exception ignored) {
++                    } catch (Exception error) {
 +                        // An unavailable recipient must not block incoming gifts.
-+                        outgoingPending = true;
++                        outgoingError = "Получатель " + next.getString("recipient") + ": " + failure(error);
++                        defer(next.getString("client_id"));
 +                    }
 +                }
 +                long cursor = preferences.getLong("cursor", 0);
@@ -200,15 +304,20 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +                long nextCursor = cursor;
 +                for (int i = 0; i < events.length(); i++) {
 +                    JSONObject event = events.getJSONObject(i);
-+                    if (!sameSession(token) || event.getLong("seq") <= nextCursor || !importEvent(event)) throw new Exception("Import pending");
++                    if (!sameSession(token)) return;
++                    if (event.getLong("seq") <= nextCursor) throw new Exception("Invalid sequence");
++                    if (!importEvent(event)) {
++                        setStatus("Сервер доступен — не удалось загрузить подарок из каталога. Повторим автоматически");
++                        return;
++                    }
 +                    nextCursor = event.getLong("seq");
 +                }
 +                if (page.getLong("cursor") != nextCursor || !sameSession(token)) throw new Exception("Invalid cursor");
-+                if (!preferences.edit().putLong("cursor", nextCursor).commit()) throw new Exception("Storage failed");
-+                lastStatus = outgoingPending ? "Подключено — отправка ожидает повтора" : "Подключено";
++                if (!preferences.edit().putLong("cursor", nextCursor).putLong("last_sync", System.currentTimeMillis()).commit()) throw new Exception("Storage failed");
++                setStatus(outgoingError != null ? outgoingError : outbox().length() > 0 ? "Подключено — отправляем очередь" : "Подключено");
 +            } catch (Exception error) {
 +                // Never log bearer tokens, comments or response bodies.
-+                lastStatus = "Ожидает синхронизации — проверь сеть, ключ и подключение пары";
++                setStatus(failure(error));
 +            } finally { busy.set(false); }
 +        });
 +    }
@@ -334,31 +443,74 @@ index 0000000000000000000000000000000000000000..c0c3e3ebf502e54ec04fca745488db99
 +
 +    public static void showSettings(Context context, int account) {
 +        GhostGramSync sync = get(account);
++        setForeground(true);
 +        LinearLayout layout = new LinearLayout(context); layout.setOrientation(LinearLayout.VERTICAL);
 +        int inset = AndroidUtilities.dp(24); layout.setPadding(inset, inset / 2, inset, 0);
 +        TextView status = new TextView(context); status.setTextIsSelectable(true);
-+        status.setText("Telegram ID: " + sync.userId + "\n" + sync.lastStatus + "\nsync.grastey.com"); layout.addView(status);
++        sync.statusView = new WeakReference<>(status);
++        sync.refreshStatus();
++        layout.addView(status);
 +        EditText input = new EditText(context); input.setSingleLine(true); input.setHint("Ключ подключения");
 +        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(input);
-+        new AlertDialog.Builder(context).setTitle("Синхронизация GhostGram").setView(layout)
-+                .setNegativeButton("Отмена", null).setNeutralButton("Отключить", (dialog, which) -> sync.preferences.edit().remove("token").commit())
-+                .setPositiveButton("Подключить", (dialog, which) -> {
-+                    String token = input.getText().toString().trim();
++        TextView hint = new TextView(context);
++        hint.setText("Сохранённый ключ не показывается. Оставь поле пустым и нажми «Проверить», чтобы проверить его повторно. Новые подарки синхронизируются при открытом приложении; подарки без ключа остаются только на этом устройстве.");
++        layout.addView(hint);
++        AlertDialog dialog = new AlertDialog.Builder(context).setTitle("Синхронизация GhostGram").setView(layout)
++                .setNegativeButton("Закрыть", null).setNeutralButton("Отключить", (closed, which) -> {
++                    sync.preferences.edit().remove("token").commit();
++                    sync.sessionToken = null;
++                    sync.sessionOnly = false;
++                    sync.lastStatus = null;
++                })
++                .setPositiveButton(sync.enabled() ? "Проверить" : "Подключить", null).create();
++        dialog.setOnDismissListener(closed -> {
++            if (sync.statusView.get() == status) sync.statusView.clear();
++        });
++        dialog.setOnShowListener(shown -> {
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
++                    String entered = input.getText().toString().trim();
++                    String token = entered.isEmpty() ? sync.token() : entered;
++                    if (token == null || token.isEmpty()) { input.setError("Введи ключ подключения"); return; }
++                    final String previousToken = sync.token();
++                    input.setEnabled(false);
++                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
++                    dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(false);
++                    sync.setStatus("Проверяем ключ и соединение…");
 +                    NETWORK.execute(() -> {
 +                        boolean valid = false;
++                        String failure = "Ключ не подходит для Telegram ID " + sync.userId;
 +                        try {
 +                            JSONObject identity = sync.request("/v1/me", token, null);
-+                            if (sync.validAccount() && String.valueOf(sync.userId).equals(identity.getString("account")) && identity.getInt("protocol") == 1) {
-+                                sync.saveToken(token); valid = true;
++                            if (sync.validAccount() && java.util.Objects.equals(previousToken, sync.token()) && String.valueOf(sync.userId).equals(identity.getString("account")) && identity.getInt("protocol") == 1) {
++                                sync.sessionToken = null;
++                                sync.sessionOnly = true;
++                                try {
++                                    sync.saveToken(token);
++                                    if (token.equals(sync.token())) sync.sessionOnly = false;
++                                } catch (Exception ignored) { }
++                                // Server-verified token stays in memory if emulator Keystore fails.
++                                sync.sessionToken = token;
++                                valid = true;
 +                            }
-+                        } catch (Exception ignored) { }
++                        } catch (Exception error) { failure = sync.failure(error); }
 +                        boolean connected = valid;
++                        String result = connected ? "Ключ подтверждён — синхронизируем подарки" : failure;
 +                        AndroidUtilities.runOnUIThread(() -> {
-+                            Toast.makeText(context, connected ? "Подключено" : "Проверь ключ для этого аккаунта и сеть", Toast.LENGTH_LONG).show();
-+                            if (connected) sync.schedule();
++                            sync.setStatus(result);
++                            if (dialog.isShowing()) {
++                                input.setEnabled(true);
++                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
++                                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(true);
++                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setText(sync.enabled() ? "Проверить" : "Подключить");
++                                if (connected) input.setText(""); else input.setError(result);
++                            }
++                            if (connected) { setForeground(true); sync.schedule(); }
 +                        });
 +                    });
-+                }).show();
++            });
++        });
++        dialog.show();
++        if (sync.enabled()) sync.schedule();
 +    }
 +}
 diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramWallet.java
@@ -413,8 +565,8 @@ index 0000000000000000000000000000000000000000..78db3576a5ff304104a9af7d8ad77343
 +        EditText ton = new EditText(context); ton.setSingleLine(true); ton.setHint("TON");
 +        ton.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
 +        ton.setText(BigDecimal.valueOf(ton(account), 9).stripTrailingZeros().toPlainString()); layout.addView(ton);
-+        AlertDialog dialog = new AlertDialog.Builder(context).setTitle("Баланс").setView(layout)
-+                .setNegativeButton("Отмена", null).setPositiveButton("Сохранить", null).create();
++        AlertDialog dialog = new AlertDialog.Builder(context).setTitle("Ð‘Ð°Ð»Ð°Ð½Ñ").setView(layout)
++                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", null).create();
 +        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
 +            try {
 +                long s = GhostGramWalletMath.parseStars(stars.getText().toString().trim());
@@ -422,7 +574,7 @@ index 0000000000000000000000000000000000000000..78db3576a5ff304104a9af7d8ad77343
 +                if (s < 0 || s > 1_000_000_000_000L || t < 0 || t > 1_000_000_000_000_000_000L) throw new IllegalArgumentException();
 +                if (!prefs(account).edit().putLong("stars", s).putLong("ton", t).commit()) throw new IllegalStateException();
 +                changed(account); dialog.dismiss();
-+            } catch (Exception error) { Toast.makeText(context, "Проверь Stars и TON (до 9 знаков после запятой)", Toast.LENGTH_LONG).show(); }
++            } catch (Exception error) { Toast.makeText(context, "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ Stars Ð¸ TON (Ð´Ð¾ 9 Ð·Ð½Ð°ÐºÐ¾Ð² Ð¿Ð¾ÑÐ»Ðµ Ð·Ð°Ð¿ÑÑ‚Ð¾Ð¹)", Toast.LENGTH_LONG).show(); }
 +        }));
 +        dialog.show();
 +    }
@@ -620,21 +772,23 @@ index 264c0aa1dc2f4b657b7c4273fffc31081bd9f344..006600f425fa523ec5a44830890cfabb
                  boldBalance.setSpan(new TypefaceSpan(AndroidUtilities.bold()), 0, boldBalance.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                  items.add(UItem.asShadow(-7, TextUtils.concat(
 diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-index f13aefd9c986bc210fd37fc29c6b707d3e16f4ba..15b4d6f4bd85b5813be1400f1195027f15ca7079 100644
+index f13aefd..33d4aa4 100644
 --- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
 +++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
-@@ -6731,6 +6731,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+@@ -6731,6 +6731,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
  
      @Override
      protected void onPause() {
++        org.telegram.messenger.GhostGramPrivateAccess.onPause(this);
 +        org.telegram.messenger.GhostGramSync.setForeground(false);
          super.onPause();
          isResumed = false;
          pipActivityHandler.onPause();
-@@ -6970,6 +6971,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+@@ -6970,6 +6972,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
      @Override
      protected void onResume() {
          super.onResume();
++        org.telegram.messenger.GhostGramPrivateAccess.onResume(this);
 +        org.telegram.messenger.GhostGramSync.setForeground(true);
          isResumed = true;
          pipActivityHandler.onResume();
@@ -658,8 +812,8 @@ index 21e137bae28bfa691b219542920e8abbfe424ffc..8c0c89e77e269489f430d144ff6c8c5a
          otherItem = menu.addItem(1, R.drawable.ic_ab_other);
          otherItem.setContentDescription(getString(R.string.AccDescrMoreOptions));
          otherItem.addSubItem(2, R.drawable.msg_leave, getString(R.string.LogOut));
-+        otherItem.addSubItem(9002, R.drawable.settings_devices, "������");
-+        otherItem.addSubItem(9001, R.drawable.settings_devices, "Синхронизация GhostGram");
++        otherItem.addSubItem(9002, R.drawable.settings_devices, "Áàëàíñ");
++        otherItem.addSubItem(9001, R.drawable.settings_devices, "Ð¡Ð¸Ð½Ñ…Ñ€Ð¾Ð½Ð¸Ð·Ð°Ñ†Ð¸Ñ GhostGram");
  
          search = new ProfileActivity.SearchAdapter(this, context) {
              @Override
@@ -775,7 +929,7 @@ index ba347e0bd03541d591a78e444e0763e659f2fb45..82edf960bdfe378f1b9a6af2da94f0dc
 +            form.invoice = new TLRPC.TL_invoice();
 +            form.invoice.currency = ton ? "TON" : "XTR";
 +            TLRPC.TL_labeledPrice price = new TLRPC.TL_labeledPrice();
-+            price.label = "�������"; price.amount = cost; form.invoice.prices.add(price);
++            price.label = "Ïîäàðîê"; price.amount = cost; form.invoice.prices.add(price);
 +            whenDone.run(form);
 +            return;
 +        }
@@ -827,3 +981,216 @@ index 5738e196de4f2f3985de34e49814c85c95906102..4cfc4184758bf39e0989759966db1fec
                  }
              } else {
                  TLRPC.TL_payments_starsRevenueStats stats = BotStarsController.getInstance(currentAccount).getStarsRevenueStats(dialogId);
+
+diff --git a/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramPrivateAccess.java b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramPrivateAccess.java
+new file mode 100644
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/messenger/GhostGramPrivateAccess.java
+@@ -0,0 +1,207 @@
++package org.telegram.messenger;
++
++import android.app.Activity;
++import android.app.Dialog;
++import android.content.Context;
++import android.graphics.Color;
++import android.graphics.drawable.ColorDrawable;
++import android.text.InputType;
++import android.view.Gravity;
++import android.view.Window;
++import android.view.WindowManager;
++import android.widget.Button;
++import android.widget.EditText;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++import android.widget.ScrollView;
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.lang.ref.WeakReference;
++import java.net.URL;
++import java.util.concurrent.Executors;
++import javax.net.ssl.HttpsURLConnection;
++import org.json.JSONObject;
++
++/** Per-account private-fork admission. Never receives Telegram phone/OTP/password. */
++public final class GhostGramPrivateAccess {
++    private static final java.util.concurrent.ExecutorService NETWORK = Executors.newSingleThreadExecutor();
++    private static WeakReference<Activity> activity = new WeakReference<>(null);
++    private static Dialog gate;
++    private static EditText input;
++    private static TextView status;
++    private static Button submit;
++    private static boolean active, checking;
++    private static long checkedAccount = -1, grantedAccount, boundAccount, leaseUntil, nextCheck;
++    private static String grantedToken;
++    private static int generation;
++    private static final Runnable TICK = new Runnable() {
++        @Override public void run() {
++            if (!active) return;
++            refresh();
++            AndroidUtilities.runOnUIThread(this, 1000);
++        }
++    };
++
++    public static void onResume(Activity owner) {
++        if (activity.get() != owner) {
++            if (gate != null) gate.dismiss();
++            gate = null;
++            activity = new WeakReference<>(owner);
++        }
++        active = true;
++        AndroidUtilities.cancelRunOnUIThread(TICK);
++        AndroidUtilities.runOnUIThread(TICK);
++    }
++
++    public static void onPause(Activity owner) {
++        if (activity.get() != owner) return;
++        active = false;
++        AndroidUtilities.cancelRunOnUIThread(TICK);
++    }
++
++    private static long currentAccount() {
++        UserConfig config = UserConfig.getInstance(UserConfig.selectedAccount);
++        return config.isClientActivated() ? config.getClientUserId() : 0;
++    }
++
++    private static long expectedAccount() {
++        return ApplicationLoader.applicationContext.getSharedPreferences("ghostgram_private_gate", Context.MODE_PRIVATE).getLong("expected_id", 0);
++    }
++
++    private static void refresh() {
++        Activity owner = activity.get();
++        if (owner == null || owner.isFinishing()) return;
++        long account = currentAccount();
++        if (checkedAccount != account) {
++            generation++;
++            checking = false;
++            checkedAccount = account;
++            boundAccount = 0;
++            nextCheck = 0;
++            // Never inherit another account's permission, including account switching.
++            if (account > 0 && grantedAccount != account) leaseUntil = 0;
++        }
++        long intended = account > 0 ? account : expectedAccount();
++        long now = android.os.SystemClock.elapsedRealtime();
++        if (grantedAccount == intended && grantedToken != null && now < leaseUntil) {
++            if (account > 0 && boundAccount != account) {
++                GhostGramSync.saveAccessToken(account, grantedToken);
++                boundAccount = account;
++            }
++            if (gate != null && gate.isShowing()) gate.dismiss();
++            if (now >= nextCheck && !checking) verify(grantedToken, account, false);
++            return;
++        }
++        show(owner);
++        if (checking || now < nextCheck) return;
++        String candidate = intended == grantedAccount && grantedToken != null ? grantedToken : GhostGramSync.accessToken(intended);
++        if (candidate != null) verify(candidate, account, false);
++    }
++
++    private static TextView text(Activity owner, String value, int size) {
++        TextView view = new TextView(owner);
++        view.setText(value); view.setTextSize(size); view.setTextColor(Color.WHITE);
++        view.setPadding(0, 12, 0, 12);
++        return view;
++    }
++
++    private static void show(Activity owner) {
++        if (gate != null && gate.isShowing()) return;
++        gate = new Dialog(owner);
++        gate.requestWindowFeature(Window.FEATURE_NO_TITLE);
++        gate.setCancelable(false); gate.setCanceledOnTouchOutside(false);
++        LinearLayout layout = new LinearLayout(owner);
++        layout.setOrientation(LinearLayout.VERTICAL); layout.setGravity(Gravity.CENTER_VERTICAL);
++        int inset = AndroidUtilities.dp(28);
++        layout.setPadding(inset, inset, inset, inset);
++        layout.setBackgroundColor(Color.rgb(17, 13, 26));
++        layout.addView(text(owner, "GhostGram Private", 30));
++        layout.addView(text(owner, "Вход по личному коду", 21));
++        layout.addView(text(owner, "Введи секретный код от администратора. Он привязан к твоему Telegram-аккаунту и сразу подключает синхронизацию.", 15));
++        long id = currentAccount();
++        if (id > 0) layout.addView(text(owner, "Твой Telegram ID: " + id, 14));
++        input = new EditText(owner);
++        input.setSingleLine(true); input.setTextColor(Color.WHITE); input.setHintTextColor(Color.LTGRAY);
++        input.setHint("Личный код доступа");
++        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
++        layout.addView(input);
++        status = text(owner, "Это код приватки. Код входа из Telegram или SMS здесь не нужен.", 13);
++        layout.addView(status);
++        submit = new Button(owner); submit.setText("Открыть GhostGram");
++        submit.setOnClickListener(view -> {
++            String token = input.getText().toString().trim();
++            if (!token.matches("[A-Za-z0-9_-]{32,128}")) { status.setText("Вставь полный личный код от администратора."); return; }
++            verify(token, currentAccount(), true);
++        });
++        layout.addView(submit);
++        ScrollView scroll = new ScrollView(owner);
++        scroll.setFillViewport(true);
++        scroll.addView(layout);
++        gate.setContentView(scroll);
++        Window window = gate.getWindow();
++        if (window != null) {
++            window.setBackgroundDrawable(new ColorDrawable(Color.rgb(17, 13, 26)));
++            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
++        }
++        gate.show();
++        if (window != null) window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
++    }
++
++    private static void verify(String token, long requestedAccount, boolean entered) {
++        if (checking) return;
++        checking = true;
++        int requestGeneration = generation;
++        nextCheck = android.os.SystemClock.elapsedRealtime() + 10000;
++        if (submit != null) submit.setEnabled(false);
++        if (status != null && gate != null && gate.isShowing()) status.setText("Проверяем личный код…");
++        NETWORK.execute(() -> {
++            long id = 0;
++            String error = "Не удалось связаться с сервером приватки. Проверь интернет и повтори.";
++            HttpsURLConnection connection = null;
++            try {
++                connection = (HttpsURLConnection) new URL("https://sync.grastey.com/v1/me").openConnection();
++                connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(10000); connection.setReadTimeout(10000);
++                connection.setRequestProperty("Authorization", "Bearer " + token);
++                int code = connection.getResponseCode();
++                if (code == 200) {
++                    try (InputStream stream = connection.getInputStream(); ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
++                        byte[] chunk = new byte[512]; int length;
++                        while ((length = stream.read(chunk)) != -1) { if (buffer.size() + length > 4096) throw new Exception(); buffer.write(chunk, 0, length); }
++                        JSONObject identity = new JSONObject(buffer.toString("UTF-8"));
++                        String raw = identity.getString("account");
++                        if (!raw.matches("[1-9][0-9]{0,15}")) throw new Exception();
++                        long candidate = Long.parseLong(raw);
++                        if (identity.optInt("protocol") == 1 && identity.optBoolean("private_access")) {
++                            if (requestedAccount == 0 || requestedAccount == candidate) id = candidate;
++                            else error = "Этот код выдан другому Telegram-аккаунту. Нужен код для ID " + requestedAccount + ".";
++                        } else error = "Этот код ещё не включён в приватку. Обратись к администратору.";
++                    }
++                } else if (code == 401 || code == 403) error = "Код недействителен, истёк или доступ отозван. Обратись к администратору.";
++            } catch (Exception ignored) { }
++            finally { if (connection != null) connection.disconnect(); }
++            long verified = id;
++            String message = error;
++            AndroidUtilities.runOnUIThread(() -> {
++                if (requestGeneration != generation || currentAccount() != requestedAccount) return;
++                checking = false;
++                if (submit != null) submit.setEnabled(true);
++                if (verified > 0) {
++                    grantedAccount = verified; grantedToken = token;
++                    GhostGramSync.saveAccessToken(verified, token);
++                    if (requestedAccount > 0) boundAccount = requestedAccount;
++                    ApplicationLoader.applicationContext.getSharedPreferences("ghostgram_private_gate", Context.MODE_PRIVATE).edit().putLong("expected_id", verified).commit();
++                    leaseUntil = android.os.SystemClock.elapsedRealtime() + 60000;
++                    nextCheck = android.os.SystemClock.elapsedRealtime() + 30000;
++                    if (gate != null) gate.dismiss();
++                    if (requestedAccount > 0 && active) GhostGramSync.setForeground(true);
++                } else {
++                    // No cached permission survives an explicit refusal or a failed refresh.
++                    leaseUntil = 0;
++                    Activity owner = activity.get();
++                    if (owner != null && active) show(owner);
++                    if (status != null) status.setText(message);
++                }
++            });
++        });
++    }
++}
