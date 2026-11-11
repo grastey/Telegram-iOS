@@ -241,6 +241,9 @@ private final class WindowRootViewController: UIViewController {
     }
 }
 
+/// A window-level cover that must receive touches before Telegram's custom window content.
+public final class WindowInteractionShield: UIView {}
+
 private final class NativeWindow: UIWindow, WindowHost {
     var updateSize: ((CGSize) -> Void)?
     var layoutSubviewsEvent: (() -> Void)?
@@ -355,6 +358,11 @@ private final class NativeWindow: UIWindow, WindowHost {
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        for case let shield as WindowInteractionShield in self.subviews.reversed() {
+            if let target = shield.hitTest(shield.convert(point, from: self), with: event) {
+                return target
+            }
+        }
         return self.hitTestImpl?(point, event)
     }
     
