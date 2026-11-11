@@ -1,5 +1,11 @@
 import Foundation
 import UIKit
+#if canImport(Display)
+import Display
+#else
+// The standalone admission preview uses a regular UIWindow.
+private final class WindowInteractionShield: UIView {}
+#endif
 #if canImport(TelegramCore)
 import TelegramCore
 #endif
@@ -111,7 +117,7 @@ final class GhostGramPrivateAccess {
             host.bringSubviewToFront(cover)
             return
         }
-        let cover = UIView(frame: host.bounds)
+        let cover = WindowInteractionShield(frame: host.bounds)
         cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         cover.backgroundColor = UIColor(red: 17/255, green: 13/255, blue: 26/255, alpha: 1)
         cover.accessibilityViewIsModal = true
