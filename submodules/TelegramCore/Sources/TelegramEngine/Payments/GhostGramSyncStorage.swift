@@ -96,6 +96,35 @@ public enum GhostGramSyncStorage {
         }
     }
 
+    private static func clearKey(accountId: Int64, peerId: Int64) -> String {
+        return "ghostgram.sync.\(accountId).cleared.\(peerId)"
+    }
+
+    public static func clearChat(accountId: Int64, peerId: Int64, messageIds: [Int64], timestamp: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = clearKey(accountId: accountId, peerId: peerId)
+        UserDefaults.standard.set(NSNumber(value: timestamp), forKey: key)
+        var deleted = Set(UserDefaults.standard.stringArray(forKey: key + ".ids") ?? [])
+        deleted.formUnion(messageIds.map(String.init))
+        let pending = readOutbox(accountId)
+        for item in pending where item.recipient == String(peerId) {
+            deleted.insert(String(messageUniqueId(sender: String(accountId), clientId: item.client_id)))
+        }
+        UserDefaults.standard.set(Array(deleted), forKey: key + ".ids")
+        if let data = try? JSONEncoder().encode(pending.filter { $0.recipient != String(peerId) }) {
+            UserDefaults.standard.set(data, forKey: outboxKey(accountId))
+        }
+    }
+
+    public static func wasCleared(accountId: Int64, peerId: Int64, messageId: Int64, timestamp: Int64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = clearKey(accountId: accountId, peerId: peerId)
+        if let boundary = UserDefaults.standard.object(forKey: key) as? NSNumber, timestamp <= boundary.int64Value { return true }
+        return (UserDefaults.standard.stringArray(forKey: key + ".ids") ?? []).contains(String(messageId))
+    }
+
     public static func cursor(accountId: Int64) -> Int64 {
         return (UserDefaults.standard.object(forKey: "ghostgram.sync.\(accountId).cursor") as? NSNumber)?.int64Value ?? 0
     }

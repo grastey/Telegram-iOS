@@ -140,6 +140,12 @@ public final class GhostGramSyncManager {
         guard event.belongs(to: String(id)), event.seq > previousSequence,
             let sender = Int64(event.sender), let recipient = Int64(event.recipient),
             event.comment.unicodeScalars.count <= 1024, UUID(uuidString: event.client_id) != nil else { completion(false); return }
+        let otherId = sender == id ? recipient : sender
+        if GhostGramSyncStorage.wasCleared(accountId: id, peerId: otherId,
+            messageId: GhostGramSyncStorage.messageUniqueId(sender: event.sender, clientId: event.client_id), timestamp: event.created) {
+            self.importEvents(events, index: index + 1, previousSequence: event.seq, completion: completion)
+            return
+        }
         let gift: Signal<StarGift?, NoError>
         if event.gift.kind == "collectible", let slug = event.gift.slug {
             gift = _internal_getUniqueStarGift(account: self.account, slug: slug)

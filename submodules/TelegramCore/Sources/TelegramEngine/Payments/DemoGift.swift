@@ -24,6 +24,10 @@ public func addLocalDemoGift(account: Account, peerId: EnginePeer.Id, gift: Star
     }
     let finalUniqueId = uniqueId
     return account.postbox.transaction { transaction -> Void in
+        // Check inside the Postbox transaction, so an in-flight relay response cannot race a clear.
+        if let syncUniqueId, let syncTimestamp,
+           GhostGramSyncStorage.wasCleared(accountId: account.peerId.id._internalGetInt64Value(), peerId: peerId.id._internalGetInt64Value(),
+               messageId: syncUniqueId, timestamp: Int64(syncTimestamp)) { return }
         if let finalUniqueId, transaction.messageIdForGloballyUniqueMessageId(peerId: peerId, id: finalUniqueId) != nil { return }
         let caption: String? = text.isEmpty ? nil : text
         // Postbox persists gift text only together with its entity array.
