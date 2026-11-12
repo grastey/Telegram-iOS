@@ -61,5 +61,93 @@
     "stars": 100,
     "sha256": "16c3b8274bccb71ca3473373d5885ffd80ef96ba92d4a1a563b05cfbc2bdff90",
     "source_zip": "sticker.tgs (13).zip"
+  },
+  {
+    "resource": "ChatGiftCup",
+    "command": "/кубок",
+    "stars": 85,
+    "price": 100,
+    "sha256": "d078a783f29230c74f114a8622176d20d2e520b02d10211a72e018760db06ea9",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5168043875654172773.tgs"
+  },
+  {
+    "resource": "ChatGiftRose",
+    "command": "/роза",
+    "stars": 21,
+    "price": 25,
+    "sha256": "5c7b8e0ae278d42cff6f665f80f727d982a78b30f37ebb69dace72dbc84bd4f9",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5168103777563050263.tgs"
+  },
+  {
+    "resource": "ChatGiftCake",
+    "command": "/торт",
+    "stars": 43,
+    "price": 50,
+    "sha256": "11e5a99c2471f47a13fc5b0c13c0d67d5fc3ac366beb8d35124c881af6a513d5",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170144170496491616.tgs"
+  },
+  {
+    "resource": "ChatGiftHeart",
+    "command": "/сердце",
+    "stars": 13,
+    "price": 15,
+    "sha256": "6a39536d22fbde6a8dd149cbe548703021d0df9b9a0e6f8866951b02404730ba",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170145012310081615.tgs"
+  },
+  {
+    "resource": "ChatGiftBear",
+    "command": "/мишка",
+    "stars": 13,
+    "price": 15,
+    "sha256": "9a64d1d4b6cd7f0dcc2fc2012f54db64f564d5f7ff9bc05029764cc781030332",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170233102089322756.tgs"
+  },
+  {
+    "resource": "ChatGiftPresent",
+    "command": "/подарок",
+    "stars": 21,
+    "price": 25,
+    "sha256": "d566f9d24b8d623eee598fcabb8cd3ab58113008511ffa3495490b7a84b967e5",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170250947678437525.tgs"
+  },
+  {
+    "resource": "ChatGiftBouquet",
+    "command": "/букет",
+    "stars": 43,
+    "price": 50,
+    "sha256": "d9b9ef9da48b27e516e1d7d474aaed07e7d891b00057561c4b9d258b91d47ec6",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170314324215857265.tgs"
+  },
+  {
+    "resource": "ChatGiftDiamond",
+    "command": "/алмаз",
+    "stars": 85,
+    "price": 100,
+    "sha256": "b0c1b8de4d84a3840a27e182daa6b7e1045f34c29b62e5000e0f99092b06d533",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170521118301225164.tgs"
+  },
+  {
+    "resource": "ChatGiftRocket",
+    "command": "/ракета",
+    "stars": 43,
+    "price": 50,
+    "sha256": "8e29fb5e76c1e4b5932697911bafa38984cba84ec82a97209b230e404f631353",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170564780938756245.tgs"
+  },
+  {
+    "resource": "ChatGiftRing",
+    "command": "/кольцо",
+    "stars": 85,
+    "price": 100,
+    "sha256": "69e103674a17a84002a0e8bc38a936c33162ee4605c82cb8f5ad249678af1908",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_5170690322832818290.tgs"
+  },
+  {
+    "resource": "ChatGiftChampagne",
+    "command": "/шампанское",
+    "stars": 43,
+    "price": 50,
+    "sha256": "009f29a092cb642251077a394a7d4b5714fe4fd149722ff5346358ca70bed097",
+    "source_url": "https://github.com/denzyve/cdn-telegram-gifts/blob/5c17383f771258c004a02c78019ac2616f482d6c/assets/tgs/gift_6028601630662853006.tgs"
   }
 ]

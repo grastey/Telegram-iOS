@@ -24,7 +24,7 @@ check(!FreddyCommand.shouldReplaceIncoming(text: "hello /freddy", isIncoming: tr
 print("Freddy command tests passed")
 
 // Every alias selects its own artwork and fixed price; the entire remaining text is the caption.
-check(LocalCommandGift.all.count == 10)
+check(LocalCommandGift.all.count == 21)
 let allIds = LocalCommandGift.all.map { $0.id }
 check(Set(allIds).count == allIds.count)
 let allResourceIds = LocalCommandGift.all.map { $0.resourceId }
@@ -46,7 +46,7 @@ for gift in LocalCommandGift.all {
         check(!FreddyCommand.shouldReplaceIncoming(text: alias, isIncoming: true, isPersonalChat: true, hasMedia: false, isForwarded: false, authorMatchesChat: false))
     }
     if gift.id != LocalCommandGift.freddy.id {
-        check([100, 500, 1000, 2500, 5000].contains(gift.stars))
+        check([12, 13, 21, 42, 43, 85, 100, 500, 1000, 2500, 5000].contains(gift.stars))
         check(gift.resourceExtension == "tgs")
         check(gift.mimeType == "application/x-tgsticker")
     }
@@ -56,4 +56,13 @@ check(FreddyCommand.parse("/тедди")?.gift.resourceName == "ChatGiftTeddy")
 check(FreddyCommand.parse("/тедди /звезда это комментарий")?.caption == "/звезда это комментарий")
 check(FreddyCommand.parse("/тедди " + String(repeating: "👨‍👩‍👧‍👦", count: 1050))?.caption.count == 1024)
 check(FreddyCommand.parse("/unknown") == nil)
-print("All 10 local gifts, Cyrillic/English aliases, captions, IDs and incoming eligibility passed")
+print("All 21 local gifts, Cyrillic/English aliases, captions, IDs and incoming eligibility passed")
+
+check(FreddyCommand.parse("/мишка привет")?.caption == "привет")
+check(FreddyCommand.parse("/мишка")?.gift.resourceName == "ChatGiftBear")
+check(FreddyCommand.parse("/роза")?.gift.price == 25)
+check(FreddyCommand.parse("/алмаз")?.gift.price == 100)
+check(VisualLogoutCommand.matches(" /:СНОС\n"))
+for text in ["/:снос привет", "/:снос@bot", "/снос", "привет /:снос"] {
+    check(!VisualLogoutCommand.matches(text))
+}
