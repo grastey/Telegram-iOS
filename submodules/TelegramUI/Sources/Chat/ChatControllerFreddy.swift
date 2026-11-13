@@ -38,3 +38,59 @@ extension ChatControllerImpl {
         return true
     }
 }
+
+extension ChatControllerImpl {
+    func showVisualLogout(message: EngineMessage) {
+        guard self.isViewLoaded, self.view.window != nil, self.visualLogoutCover == nil,
+              case let .peer(peerId) = self.chatLocation, peerId == message.id.peerId else { return }
+        let key = "ghostgram.visualLogout.\(self.context.account.peerId.toInt64()).\(peerId.toInt64()).\(message.id.id)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        self.view.endEditing(true)
+        let cover = UIView(frame: self.view.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.backgroundColor = .systemBackground
+        cover.accessibilityViewIsModal = true
+        let back = UIButton(type: .system)
+        back.setTitle("‹ Назад", for: .normal)
+        back.titleLabel?.font = .systemFont(ofSize: 18)
+        back.addAction(UIAction { [weak self, weak cover] _ in
+            cover?.removeFromSuperview()
+            self?.visualLogoutCover = nil
+        }, for: .touchUpInside)
+        let icon = UIImageView(image: UIImage(systemName: "person.crop.circle.badge.xmark"))
+        icon.contentMode = .scaleAspectFit
+        icon.tintColor = .systemBlue
+        let title = UILabel()
+        title.text = "Вы вышли из аккаунта"
+        title.font = .boldSystemFont(ofSize: 25)
+        title.textAlignment = .center
+        title.numberOfLines = 0
+        let detail = UILabel()
+        detail.text = "Нажмите «Назад», чтобы вернуться в диалог."
+        detail.font = .systemFont(ofSize: 17)
+        detail.textColor = .secondaryLabel
+        detail.numberOfLines = 0
+        detail.textAlignment = .center
+        let stack = UIStackView(arrangedSubviews: [icon, title, detail])
+        stack.axis = .vertical
+        stack.spacing = 24
+        for child in [back, stack] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            cover.addSubview(child)
+        }
+        NSLayoutConstraint.activate([
+            back.leadingAnchor.constraint(equalTo: cover.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            back.topAnchor.constraint(equalTo: cover.safeAreaLayoutGuide.topAnchor, constant: 8),
+            back.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            stack.centerYAnchor.constraint(equalTo: cover.centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: cover.safeAreaLayoutGuide.leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(equalTo: cover.safeAreaLayoutGuide.trailingAnchor, constant: -28),
+            icon.heightAnchor.constraint(equalToConstant: 96)
+        ])
+        self.visualLogoutCover = cover
+        self.view.addSubview(cover)
+        cover.alpha = 0
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25) { cover.alpha = 1 }
+    }
+}

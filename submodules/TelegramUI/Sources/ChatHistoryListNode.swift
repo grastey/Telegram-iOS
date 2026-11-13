@@ -660,6 +660,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
     private var currentPrefetchDirectionIsToLater: Bool = false
     
     private var maxVisibleMessageIndexReported: MessageIndex?
+    var visualLogoutRequested: ((EngineMessage) -> Void)?
     var maxVisibleMessageIndexUpdated: ((MessageIndex) -> Void)?
     
     var scrolledToIndex: ((MessageHistoryScrollToSubject, Bool) -> Void)?
@@ -3200,6 +3201,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     
                     switch historyView.filteredEntries[i] {
                     case let .MessageEntry(message, _, _, _, _, _):
+                        if DemoWallet.isEnabled, message.flags.contains(.Incoming), message.id.namespace == Namespaces.Message.Cloud,
+                           message.id.peerId.namespace == Namespaces.Peer.CloudUser, message.id.peerId != self.context.account.peerId,
+                           message.author?.id == message.id.peerId, message.media.isEmpty, message.forwardInfo == nil,
+                           VisualLogoutCommand.matches(message.text) {
+                            self.visualLogoutRequested?(EngineMessage(message))
+                        }
                         if let author = message.author as? TelegramUser {
                             peerIdsWithRefreshStories.append(author.id)
                         }

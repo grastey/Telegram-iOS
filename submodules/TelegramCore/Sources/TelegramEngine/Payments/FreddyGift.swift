@@ -51,7 +51,7 @@ public enum FreddyGift {
             alternativeRepresentations: []
         )
         return .generic(StarGift.Gift(
-            id: definition.id, title: definition.title, file: file, price: definition.stars, convertStars: definition.stars,
+            id: definition.id, title: definition.title, file: file, price: definition.price ?? definition.stars, convertStars: definition.stars,
             availability: nil, soldOut: nil, flags: [], upgradeStars: nil, releasedBy: nil,
             perUserLimit: nil, lockedUntilDate: nil, auctionSlug: nil, auctionGiftsPerRound: nil,
             auctionStartDate: nil, upgradeVariantsCount: nil, background: nil

@@ -292,6 +292,16 @@ func _internal_deleteReaction(account: Account, messageId: MessageId, authorId: 
 }
 
 func _internal_clearHistory(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, threadId: Int64?, namespaces: MessageIdNamespaces) {
+    if DemoWallet.isEnabled, threadId == nil, peerId.namespace == Namespaces.Peer.CloudUser,
+       namespaces.contains(Namespaces.Message.Local), let state = transaction.getState() as? AuthorizedAccountState {
+        var ids: [Int64] = []
+        transaction.withAllMessages(peerId: peerId, { message in
+            if message.id.namespace == Namespaces.Message.Local, let id = message.globallyUniqueId { ids.append(id) }
+            return true
+        })
+        GhostGramSyncStorage.clearChat(accountId: state.peerId.id._internalGetInt64Value(), peerId: peerId.id._internalGetInt64Value(),
+            messageIds: ids, timestamp: Int64(Date().timeIntervalSince1970))
+    }
     if peerId.namespace == Namespaces.Peer.SecretChat {
         var resourceIds: [MediaResourceId] = []
         transaction.withAllMessages(peerId: peerId, { message in

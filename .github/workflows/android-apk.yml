@@ -1,6 +1,8 @@
 name: Build GhostGram unsigned APK
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [freddy-chat-animation]
   push:
     branches: [demo-local-gifts]
     paths:
@@ -9,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ghostgram-android-apk
+  group: ghostgram-private-android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
@@ -62,7 +64,8 @@ jobs:
           sha256sum GhostGram-unsigned.apk signing-tools/apksigner.jar > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: GhostGram-Android-unsigned-arm64
+          name: GhostGram-Private-Android-unsigned-arm64
           path: output/
           retention-days: 14
           if-no-files-found: error
+

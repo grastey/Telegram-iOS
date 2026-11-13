@@ -6,14 +6,31 @@ public enum GhostGramSyncStorage {
     public static let changed = Notification.Name("GhostGramSyncSettingsChanged")
     private static let lock = NSLock()
     private static let service = "dev.grastey.ghostgram.sync"
+    private static var sessionTokens: [Int64: String] = [:]
+
+    /// A server-verified key may be retained in memory if Keychain is unavailable.
+    public static func setSessionToken(accountId: Int64, token: String?) {
+        lock.lock()
+        sessionTokens[accountId] = token
+        lock.unlock()
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
 
     public static func token(accountId: Int64) -> String? {
+        lock.lock()
+        let session = sessionTokens[accountId]
+        lock.unlock()
+        if let session { return session }
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: String(accountId),
             kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var value: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess, let data = value as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let token = String(data: data, encoding: .utf8)
+        lock.lock()
+        sessionTokens[accountId] = token
+        lock.unlock()
+        return token
     }
 
     public static func saveToken(accountId: Int64, token: String?) -> Bool {
@@ -37,7 +54,12 @@ public enum GhostGramSyncStorage {
             let deleted = SecItemDelete(query as CFDictionary)
             status = deleted == errSecItemNotFound ? errSecSuccess : deleted
         }
-        if status == errSecSuccess { NotificationCenter.default.post(name: changed, object: nil) }
+        if status == errSecSuccess {
+            lock.lock()
+            sessionTokens[accountId] = token
+            lock.unlock()
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
         return status
     }
 
@@ -72,6 +94,35 @@ public enum GhostGramSyncStorage {
         if let data = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(data, forKey: outboxKey(accountId))
         }
+    }
+
+    private static func clearKey(accountId: Int64, peerId: Int64) -> String {
+        return "ghostgram.sync.\(accountId).cleared.\(peerId)"
+    }
+
+    public static func clearChat(accountId: Int64, peerId: Int64, messageIds: [Int64], timestamp: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = clearKey(accountId: accountId, peerId: peerId)
+        UserDefaults.standard.set(NSNumber(value: timestamp), forKey: key)
+        var deleted = Set(UserDefaults.standard.stringArray(forKey: key + ".ids") ?? [])
+        deleted.formUnion(messageIds.map(String.init))
+        let pending = readOutbox(accountId)
+        for item in pending where item.recipient == String(peerId) {
+            deleted.insert(String(messageUniqueId(sender: String(accountId), clientId: item.client_id)))
+        }
+        UserDefaults.standard.set(Array(deleted), forKey: key + ".ids")
+        if let data = try? JSONEncoder().encode(pending.filter { $0.recipient != String(peerId) }) {
+            UserDefaults.standard.set(data, forKey: outboxKey(accountId))
+        }
+    }
+
+    public static func wasCleared(accountId: Int64, peerId: Int64, messageId: Int64, timestamp: Int64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = clearKey(accountId: accountId, peerId: peerId)
+        if let boundary = UserDefaults.standard.object(forKey: key) as? NSNumber, timestamp <= boundary.int64Value { return true }
+        return (UserDefaults.standard.stringArray(forKey: key + ".ids") ?? []).contains(String(messageId))
     }
 
     public static func cursor(accountId: Int64) -> Int64 {

@@ -4956,6 +4956,9 @@ extension ChatControllerImpl {
     }
     
     func setupChatHistoryNode(historyNode: ChatHistoryListNodeImpl) {
+        historyNode.visualLogoutRequested = { [weak self] message in
+            DispatchQueue.main.async { self?.showVisualLogout(message: message) }
+        }
         self.historyStateDisposable?.dispose()
         self.historyStateDisposable = historyNode.historyState.get().startStrict(next: { [weak self] state in
             if let strongSelf = self {
