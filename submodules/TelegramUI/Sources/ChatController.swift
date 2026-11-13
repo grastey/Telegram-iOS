@@ -315,6 +315,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var moreBarButton: MoreHeaderButton
     var moreInfoNavigationButton: ChatNavigationButton?
     
+    var visualLogoutCover: UIView?
     var historyStateDisposable: Disposable?
     
     let galleryHiddenMesageAndMediaDisposable = MetaDisposable()
