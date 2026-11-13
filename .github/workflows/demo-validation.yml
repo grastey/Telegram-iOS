@@ -44,6 +44,14 @@ jobs:
           swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift "$RUNNER_TEMP/ghostgram-wire/main.swift" -o "$RUNNER_TEMP/ghostgram-wire/tests"
           "$RUNNER_TEMP/ghostgram-wire/tests"
           swiftc -typecheck submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncStorage.swift
+      - name: Test cleared gift replay protection
+        run: |
+          mkdir -p "$RUNNER_TEMP/ghostgram-clear"
+          cp demo-tests/clear-history-main.swift "$RUNNER_TEMP/ghostgram-clear/main.swift"
+          swiftc submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncProtocol.swift submodules/TelegramCore/Sources/TelegramEngine/Payments/GhostGramSyncStorage.swift "$RUNNER_TEMP/ghostgram-clear/main.swift" -o "$RUNNER_TEMP/ghostgram-clear/tests"
+          "$RUNNER_TEMP/ghostgram-clear/tests"
+          swiftc -frontend -parse submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessages.swift
+          swiftc -frontend -parse submodules/TelegramUI/Sources/ChatHistoryListNode.swift
       - name: Test actual Postbox user ID conversion
         run: |
           mkdir -p "$RUNNER_TEMP/ghostgram-peer-id"
