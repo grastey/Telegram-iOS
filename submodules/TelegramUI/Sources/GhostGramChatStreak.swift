@@ -1,7 +1,6 @@
 import Foundation
 import UIKit
 import Display
-import Postbox
 import TelegramCore
 import SwiftSignalKit
 import DebugCompanionScreen
@@ -53,7 +52,7 @@ final class GhostGramChatStreak: NSObject {
     }
 
     private weak var controller: ChatControllerImpl?
-    private let peerId: PeerId
+    private let peerId: EnginePeer.Id
     private let storageKey: String
     private let history = MetaDisposable()
     private var configuration: Configuration?
@@ -66,7 +65,7 @@ final class GhostGramChatStreak: NSObject {
     private var top: CGFloat?
     private let badge = UILabel()
 
-    init(controller: ChatControllerImpl, peerId: PeerId) {
+    init(controller: ChatControllerImpl, peerId: EnginePeer.Id) {
         self.controller = controller
         self.peerId = peerId
         self.storageKey = "GhostGram.streak.\(controller.context.account.peerId.toInt64()).\(peerId.toInt64())"
@@ -105,33 +104,17 @@ final class GhostGramChatStreak: NSObject {
         guard let controller = self.controller else { return }
         self.refreshBadge()
         guard self.configuration != nil else { return }
-        let signal = controller.context.account.viewTracker.aroundMessageHistoryViewForLocation(
-            .peer(peerId: self.peerId, threadId: nil), index: .upperBound, anchorIndex: .upperBound, count: 120
-        )
-        self.history.set((signal |> deliverOnMainQueue).start(next: { [weak self] view, _, _ in
-            guard !view.isLoading else { return }
-            self?.update(entries: view.entries)
+        let day = Calendar.current.startOfDay(for: Date())
+        let signal = GhostGramStreakSettings.activity(account: controller.context.account, peerId: self.peerId, since: day)
+        self.history.set((signal |> deliverOnMainQueue).start(next: { [weak self] incoming, outgoing in
+            self?.update(day: day, observedIncoming: incoming, observedOutgoing: outgoing)
         }))
     }
 
-    private func update(entries: [MessageHistoryEntry]) {
-        guard let controller = self.controller else { return }
-        let day = Calendar.current.startOfDay(for: Date())
-        var incoming = self.calendarDay == day && self.sawIncoming
-        var outgoing = self.calendarDay == day && self.sawOutgoing
-        for entry in entries.reversed() {
-            let message = entry.message
-            if Date(timeIntervalSince1970: TimeInterval(message.timestamp)) < day { break }
-            guard message.id.namespace == Namespaces.Message.Cloud,
-                  message.flags.intersection([.Unsent, .Sending, .Failed]).isEmpty,
-                  !message.media.contains(where: { $0 is TelegramMediaAction }) else { continue }
-            if message.effectivelyIncoming(controller.context.account.peerId) {
-                incoming = true
-            } else {
-                outgoing = true
-            }
-            if incoming && outgoing { break }
-        }
+    private func update(day: Date, observedIncoming: Bool, observedOutgoing: Bool) {
+        guard day == Calendar.current.startOfDay(for: Date()) else { return }
+        let incoming = observedIncoming || (self.calendarDay == day && self.sawIncoming)
+        let outgoing = observedOutgoing || (self.calendarDay == day && self.sawOutgoing)
         let completionKey = self.storageKey + ".completed"
         let alreadyCompleted = UserDefaults.standard.object(forKey: completionKey) as? Date == day
         let shouldAnimate = !alreadyCompleted && self.calendarDay != nil && incoming && outgoing
