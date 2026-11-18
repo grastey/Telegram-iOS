@@ -171,6 +171,48 @@ jobs:
           path: demo-output/
           if-no-files-found: error
           retention-days: 3
+      - name: Encrypt streak IPA for the laptop
+        if: github.ref_name == 'ghostgram-ios-streaks'
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/streak-recipient.pem" <<'GHOSTGRAM_RECIPIENT'
+          -----BEGIN CERTIFICATE-----
+          MIIDwzCCAiugAwIBAgIJAIVl9U3AJnBqMA0GCSqGSIb3DQEBCwUAMCExHzAdBgNV
+          BAMTFkdob3N0R3JhbSBJUEEgRG93bmxvYWQwHhcNMjYxMTE4MTYyMjI4WhcNMjgx
+          MTE4MTYyNzI4WjAhMR8wHQYDVQQDExZHaG9zdEdyYW0gSVBBIERvd25sb2FkMIIB
+          ojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA1zToY90SR6lr0d0VIL41tMto
+          tQUnooUGeEhTSgxgTMs0P76eE8B0EqCSFr0PiVqNEM5sG33pHKyodn8ae+zV9aC8
+          H8UYgs54ogaAmYxJqmyUTAZkGJglYv1O8nSNZ0Hgu8B7+/0M6HNUGgyAwxzSso7H
+          SOVZ4F0RRkTg0YJwY/FRGdeEwO1VHfcwnPoP2ZyOAsgzKNezth/NHRQQgUysLesR
+          ABWpN1R6aTYSvu/CawI7iwn0drul5PSSTBMefpLXqDdK64sYnWc/ZsNc4dnQTGsu
+          OyLmpxwf802qRdpkJLYlLFc3Gi4tge7MJyetD78fyTBrx+ddBWwBnQBpML/rJwtR
+          GTyxf2s5XSSCzVjQvu9+mv5fhhDf26bihHA2VDMGFi7xReCz+IAZJgm2rG8P+6Yq
+          wnGswTJh+8Ki0t2lxWgpPBxr8MPXfI0uEpDsHYxpnrZ3LDpZYwgVW4/Auh4X3Kjs
+          fZC/TYCu88uoDbYivgN4eNfct1L8giRmTN+mJtzxAgMBAAEwDQYJKoZIhvcNAQEL
+          BQADggGBAJbcTYiK0Njlz+bH1sW6/rE6FtWESx3Usz9Su1ZW4+l0ziB6FWvUYUDl
+          T2uNvC2BL1laZuq1uanYwRvaBFsYzAjkpNMJvQuUtipvyZqjssRbhZ07z3yN2BGU
+          syjnZdDpowkTChBD8Phb3dFYVaehv35+Vi/N9y+qIfpeom1brRq/E5Yuyzqk9H5/
+          EQ58zWshIJttSujdS3//CaowdB1M4bZDYAiuzlPfoP/CZX2zPOAhU/f5jGdKxQn0
+          5a3pN4Y0BI66WUoSDa0JMESq1bo0Z3wpOF+q4k6ef5wru0l5mEnER0o+oQdNbdTs
+          ZHy7dENZglYOikznwb34K1RBBermcaFV/bg8ZBXOH+Adl/prnfT6y05NYrMpG/7g
+          smLTE+Wtgx7jrK58SyzaZFUSa5+OjVkcbHzyXp5L6vKz+y4LhN+RYLTdlo+Fz1oF
+          ihYNl0LQnaM5Xy8ro4YSBhoGCsr+mOvyitoz4fhK6d7hsVYtFSUCbZXH8f5U0KyX
+          4DohZrNI2w==
+          -----END CERTIFICATE-----
+          GHOSTGRAM_RECIPIENT
+          /usr/bin/openssl cms -encrypt -aes-256-cbc -binary -outform DER \
+            -in demo-output/DemoGram-resign-required.ipa \
+            -out "$RUNNER_TEMP/GhostGram-streaks.ipa.cms" \
+            "$RUNNER_TEMP/streak-recipient.pem"
+          test -s "$RUNNER_TEMP/GhostGram-streaks.ipa.cms"
+      - name: Upload encrypted streak IPA
+        if: github.ref_name == 'ghostgram-ios-streaks'
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhostGram-streaks-encrypted
+          path: ${{ runner.temp }}/GhostGram-streaks.ipa.cms
+          if-no-files-found: error
+          retention-days: 3
       - name: Remove temporary application credentials
         if: always()
         run: python3 -c 'import os,pathlib; (pathlib.Path(os.environ["RUNNER_TEMP"])/"demogram-config.json").unlink(missing_ok=True)'
