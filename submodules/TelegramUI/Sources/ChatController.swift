@@ -300,6 +300,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     let chatWallpaperPromise = Promise<TelegramWallpaper?>()
     
     var chatTitleView: ChatNavigationBarTitleView?
+    var ghostGramStreak: GhostGramChatStreak?
     /// Set by a tap on the header's title pill or avatar, just before the `.openChatInfo` it sends, which takes it at once.
     var openChatInfoFromHeader = false
     /// The profile `.openChatInfo` pushed for a header tap: only its push expands (the push waits for the profile to be
@@ -6067,6 +6068,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         
         self.navigationItem.titleView = self.chatTitleView
         self.chatTitleView?.longTapAction = { [weak self] in
+            if let streak = self?.ghostGramStreak {
+                streak.showMenu()
+                return
+            }
             if let strongSelf = self, let peerView = strongSelf.contentData?.state.peerView, let peer = peerView.peers[peerView.peerId], peer.restrictionText(platform: "ios", contentSettings: strongSelf.context.currentContentSettings.with { $0 }) == nil && !strongSelf.presentationInterfaceState.isNotAccessible {
                 if case .standard(.previewing) = strongSelf.mode {
                 } else {
@@ -7869,6 +7874,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
 
     override public func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if !self.isPreviewingMode {
+            self.startGhostGramStreak()
+        }
         
         self.didAppear = true
         
@@ -8315,6 +8323,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     override public func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        self.ghostGramStreak?.stop()
+        self.ghostGramStreak = nil
 
         self.walletTransferAnimationsVisible = false
         
@@ -8456,6 +8466,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     override public func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
         self.suspendNavigationBarLayout = true
         super.containerLayoutUpdated(layout, transition: transition)
+        self.ghostGramStreak?.layout(top: self.navigationLayout(layout: layout).navigationFrame.maxY)
         
         if self.isPreviewingMode, case let .peer(peerId) = self.chatLocation, peerId.namespace == Namespaces.Peer.SecretChat {
             // A previewing controller is hosted by a ContextController, which never calls

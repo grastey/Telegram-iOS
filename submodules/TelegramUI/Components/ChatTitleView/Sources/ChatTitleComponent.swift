@@ -120,6 +120,9 @@ public final class ChatNavigationBarTitleView: UIView, NavigationBarGlassPillTit
     
     public var tapAction: (() -> Void)?
     public var longTapAction: (() -> Void)?
+    public var streakBadge: UIView? {
+        didSet { self.update(transition: .immediate) }
+    }
     
     override public init(frame: CGRect) {
         super.init(frame: frame)
@@ -247,6 +250,7 @@ public final class ChatNavigationBarTitleView: UIView, NavigationBarGlassPillTit
                     content: contentData.content,
                     activities: self.activities,
                     networkState: self.networkState,
+                    streakBadge: self.streakBadge,
                     tapped: { [weak self] in
                         guard let self else {
                             return
@@ -318,6 +322,7 @@ public final class ChatTitleComponent: Component {
     public let networkState: AccountNetworkState?
     public let tapped: () -> Void
     public let longTapped: () -> Void
+    public let streakBadge: UIView?
     
     public init(
         context: AccountContext,
@@ -330,6 +335,7 @@ public final class ChatTitleComponent: Component {
         content: ChatTitleContent,
         activities: Activities?,
         networkState: AccountNetworkState?,
+        streakBadge: UIView? = nil,
         tapped: @escaping () -> Void,
         longTapped: @escaping () -> Void
     ) {
@@ -343,6 +349,7 @@ public final class ChatTitleComponent: Component {
         self.content = content
         self.activities = activities
         self.networkState = networkState
+        self.streakBadge = streakBadge
         self.tapped = tapped
         self.longTapped = longTapped
     }
@@ -378,12 +385,16 @@ public final class ChatTitleComponent: Component {
         if lhs.networkState != rhs.networkState {
             return false
         }
+        if lhs.streakBadge !== rhs.streakBadge {
+            return false
+        }
         return true
     }
     
     public final class View: UIView {
         private var backgroundView: GlassBackgroundView?
         private let contentContainer: UIView
+        private weak var displayedStreakBadge: UIView?
         /// While a navigation transition draws the pill, the pill is hidden and what it shows is lent to the transition
         /// (`lendGlassPillContent`); it is taken back when the pill is attached again.
         var isGlassPillDetached: Bool = false {
@@ -1270,7 +1281,9 @@ public final class ChatTitleComponent: Component {
                 titleRightIconsWidth += statusIconSize.width + statusIconsSpacing
             }
             
-            let maxTitleWidth = availableSize.width - titleLeftIconsWidth - titleRightIconsWidth - containerSideInset * 2.0
+            let badgeWidth = component.streakBadge == nil ? 0.0 : min(68.0, floor(availableSize.width * 0.40))
+            titleRightIconsWidth += badgeWidth
+            let maxTitleWidth = max(1.0, availableSize.width - titleLeftIconsWidth - titleRightIconsWidth - containerSideInset * 2.0)
             
             let titleSize = self.title.update(
                 transition: transition,
@@ -1369,7 +1382,15 @@ public final class ChatTitleComponent: Component {
                 nextLeftIconX -= statusIconsSpacing + verifiedIconSize.width
             }
             
-            var nextRightIconX: CGFloat = titleFrame.maxX
+            if self.displayedStreakBadge !== component.streakBadge {
+                self.displayedStreakBadge?.removeFromSuperview()
+                self.displayedStreakBadge = component.streakBadge
+                if let badge = component.streakBadge {
+                    self.contentContainer.addSubview(badge)
+                }
+            }
+            component.streakBadge?.frame = CGRect(x: titleFrame.maxX + 3.0, y: titleFrame.midY - 9.0, width: max(0.0, badgeWidth - 6.0), height: 18.0)
+            var nextRightIconX: CGFloat = titleFrame.maxX + badgeWidth
             
             if let credibilityIconSize, let credibilityIconView = self.credibilityIcon?.view {
                 let credibilityIconFrame = CGRect(origin: CGPoint(x: nextRightIconX + statusIconsSpacing, y: titleFrame.minY), size: credibilityIconSize)

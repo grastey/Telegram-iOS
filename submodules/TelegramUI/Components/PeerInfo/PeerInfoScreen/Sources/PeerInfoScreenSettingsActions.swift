@@ -293,6 +293,18 @@ extension PeerInfoScreenNode {
                 return
             }
             self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: url, forceExternal: !url.hasPrefix("tg://") && !url.contains("?start="), presentationData: self.context.sharedContext.currentPresentationData.with({$0}), navigationController: controller.navigationController as? NavigationController, dismissInput: {})
+        case .ghostGramStreaks:
+            guard let controller = self.controller else { return }
+            let accountId = self.context.account.peerId.toInt64()
+            let enabled = GhostGramStreakSettings.isEnabled(accountId: accountId)
+            let alert = UIAlertController(title: "Огоньки GhostGram", message: "Удерживай название личного чата, чтобы настроить огонёк.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+            alert.addAction(UIAlertAction(title: enabled ? "Выключить" : "Включить", style: .default, handler: { [weak self] _ in
+                GhostGramStreakSettings.setEnabled(!enabled, accountId: accountId)
+                guard let self else { return }
+                self.updatePresentationData(self.presentationData)
+            }))
+            controller.present(alert, animated: true)
         case .stars:
             if DemoWallet.isEnabled, let controller = self.controller {
                 presentDemoWalletEditor(controller: controller, accountId: self.context.account.peerId.toInt64(), syncAccountId: self.context.account.peerId.id._internalGetInt64Value(), completion: { [weak self] in

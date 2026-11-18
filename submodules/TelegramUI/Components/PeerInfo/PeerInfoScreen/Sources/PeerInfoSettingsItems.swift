@@ -247,6 +247,11 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
         interaction.openSettings(.chatFolders)
     }))
     
+    let streaksEnabled = GhostGramStreakSettings.isEnabled(accountId: context.account.peerId.toInt64())
+    items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 105, label: .text(streaksEnabled ? "Вкл." : "Выкл."), text: "Огоньки GhostGram", icon: PresentationResourcesSettings.chatFolders, action: {
+        interaction.openSettings(.ghostGramStreaks)
+    }))
+
     let notificationsWarning: Bool
     if let settings = data.globalSettings {
         notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
