@@ -8,6 +8,7 @@ on:
     branches:
       - demo-local-gifts
       - freddy-chat-animation
+      - ghostgram-ios-streaks
     paths:
       - .github/workflows/demo-ipa.yml
       - build-system/Make/RefreshVerificationProfiles.py
@@ -164,6 +165,7 @@ jobs:
           (output / "READ-ME.txt").write_text("GhostGram Private. Requires a personal private-member key on sync.grastey.com. Re-sign with your own Apple account before installing. Telegram credentials stay with Telegram. Synthetic gifts sync between enrolled private members while the apps are open.\n")
           PY
       - uses: actions/upload-artifact@v4
+        if: github.ref_name != 'ghostgram-ios-streaks'
         with:
           name: GhostGram-Private-personal-resigning-required
           path: demo-output/
