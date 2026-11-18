@@ -13,7 +13,7 @@ public enum GhostGramStreakSettings {
 
     public static func activity(account: Account, peerId: EnginePeer.Id, since day: Date) -> Signal<(incoming: Bool, outgoing: Bool), NoError> {
         return account.viewTracker.aroundMessageHistoryViewForLocation(
-            .peer(peerId: peerId, threadId: nil), index: .upperBound, anchorIndex: .upperBound, count: 120
+            .peer(peerId: peerId, threadId: nil), index: .upperBound, anchorIndex: .upperBound, count: 120, fixedCombinedReadStates: nil
         )
         |> filter { view, _, _ in !view.isLoading }
         |> map { view, _, _ in
