@@ -23,7 +23,18 @@ public struct LocalCommandGift: Equatable {
         LocalCommandGift(id: -7102920260150, title: "Тедди", aliases: ["/тедди", "/teddy"], resourceName: "ChatGiftTeddy", resourceExtension: "tgs", stars: 2500),
         LocalCommandGift(id: -7102920260160, title: "Какао", aliases: ["/какао", "/cocoa"], resourceName: "ChatGiftCocoa", resourceExtension: "tgs", stars: 100),
         LocalCommandGift(id: -7102920260170, title: "Звёздочка", aliases: ["/звезда", "/star"], resourceName: "ChatGiftStar", resourceExtension: "tgs", stars: 1000),
-        LocalCommandGift(id: -7102920260180, title: "Молоко с печеньем", aliases: ["/печенье", "/cookie"], resourceName: "ChatGiftCookie", resourceExtension: "tgs", stars: 100)
+        LocalCommandGift(id: -7102920260180, title: "Молоко с печеньем", aliases: ["/печенье", "/cookie"], resourceName: "ChatGiftCookie", resourceExtension: "tgs", stars: 100),
+        LocalCommandGift(id: -7102920260200, title: "Мишка", aliases: ["/мишка"], resourceName: "ChatGiftRegularBear", resourceExtension: "tgs", stars: 13),
+        LocalCommandGift(id: -7102920260210, title: "Сердце", aliases: ["/сердце"], resourceName: "ChatGiftRegularHeart", resourceExtension: "tgs", stars: 13),
+        LocalCommandGift(id: -7102920260220, title: "Подарок", aliases: ["/подарок"], resourceName: "ChatGiftRegularBox", resourceExtension: "tgs", stars: 21),
+        LocalCommandGift(id: -7102920260230, title: "Роза", aliases: ["/роза"], resourceName: "ChatGiftRegularRose", resourceExtension: "tgs", stars: 21),
+        LocalCommandGift(id: -7102920260240, title: "Торт", aliases: ["/торт"], resourceName: "ChatGiftRegularCake", resourceExtension: "tgs", stars: 42),
+        LocalCommandGift(id: -7102920260250, title: "Букет", aliases: ["/букет"], resourceName: "ChatGiftRegularBouquet", resourceExtension: "tgs", stars: 42),
+        LocalCommandGift(id: -7102920260260, title: "Ракета", aliases: ["/ракета"], resourceName: "ChatGiftRegularRocket", resourceExtension: "tgs", stars: 42),
+        LocalCommandGift(id: -7102920260270, title: "Шампанское", aliases: ["/шампанское"], resourceName: "ChatGiftRegularChampagne", resourceExtension: "tgs", stars: 42),
+        LocalCommandGift(id: -7102920260280, title: "Кубок", aliases: ["/кубок"], resourceName: "ChatGiftRegularTrophy", resourceExtension: "tgs", stars: 85),
+        LocalCommandGift(id: -7102920260290, title: "Кольцо", aliases: ["/кольцо"], resourceName: "ChatGiftRegularRing", resourceExtension: "tgs", stars: 85),
+        LocalCommandGift(id: -7102920260300, title: "Алмаз", aliases: ["/алмаз"], resourceName: "ChatGiftRegularGem", resourceExtension: "tgs", stars: 85)
     ]
 }
 
